@@ -25,6 +25,8 @@ const SCHEMA_STATEMENTS = [
     provisional_logo_key TEXT,
     provisional_logo_content_type TEXT,
     state_code TEXT NOT NULL,
+    state_border_color TEXT NOT NULL DEFAULT '#ff9a3d',
+    state_fill_color TEXT NOT NULL DEFAULT '#ffe1c2',
     target_total_cents INTEGER NOT NULL,
     existing_total_cents INTEGER NOT NULL,
     charge_cents INTEGER NOT NULL,
@@ -58,6 +60,8 @@ const SCHEMA_STATEMENTS = [
     stripe_charge_id TEXT,
     listing_id TEXT NOT NULL REFERENCES listings(id),
     state_code TEXT NOT NULL,
+    state_border_color TEXT NOT NULL DEFAULT '#ff9a3d',
+    state_fill_color TEXT NOT NULL DEFAULT '#ffe1c2',
     amount_cents INTEGER NOT NULL,
     reversed_cents INTEGER NOT NULL DEFAULT 0,
     paid_at INTEGER NOT NULL,
@@ -143,6 +147,13 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_content_reports_listing ON content_reports(listing_id, created_at)`,
 ] as const;
 
+const COMPATIBILITY_COLUMNS = [
+  { table: 'bid_attempts', name: 'state_border_color', definition: "TEXT NOT NULL DEFAULT '#ff9a3d'" },
+  { table: 'bid_attempts', name: 'state_fill_color', definition: "TEXT NOT NULL DEFAULT '#ffe1c2'" },
+  { table: 'bid_payments', name: 'state_border_color', definition: "TEXT NOT NULL DEFAULT '#ff9a3d'" },
+  { table: 'bid_payments', name: 'state_fill_color', definition: "TEXT NOT NULL DEFAULT '#ffe1c2'" },
+] as const;
+
 let initialization: { key: string; promise: Promise<void> } | null = null;
 
 export async function ensureDatabase() {
@@ -153,6 +164,12 @@ export async function ensureDatabase() {
   if (!initialization || initialization.key !== key) {
     const promise = (async () => {
       await env.DB.batch(SCHEMA_STATEMENTS.map((statement) => env.DB.prepare(statement)));
+      for (const column of COMPATIBILITY_COLUMNS) {
+        const tableInfo = await env.DB.prepare(`PRAGMA table_info(${column.table})`).all<{ name: string }>();
+        if (!tableInfo.results.some((entry) => entry.name === column.name)) {
+          await env.DB.prepare(`ALTER TABLE ${column.table} ADD COLUMN ${column.name} ${column.definition}`).run();
+        }
+      }
     })().catch((error) => {
       if (initialization?.key === key) initialization = null;
       throw error;

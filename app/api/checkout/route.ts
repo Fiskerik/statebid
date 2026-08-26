@@ -8,12 +8,14 @@ import { assertNotBlocked, enforceRateLimit, HttpError, jsonError, verifyTurnsti
 import { getSiteUrl, getStripe } from '@/lib/server/stripe';
 import { STATE_BY_CODE, type StateCode } from '@/lib/states';
 import type { CheckoutQuote, DestinationType } from '@/lib/types';
+import { lighterColor, normalizeHexColor } from '@/lib/colors';
 
 const schema = z.object({
   stateCode: z.string().length(2),
   destination: z.string().min(1).max(2048),
   previewId: z.string().uuid().nullable().optional(),
   targetTotalCents: z.string().regex(/^\d+$/),
+  stateBorderColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   termsAccepted: z.literal(true),
   turnstileToken: z.string().max(4096).optional(),
 });
@@ -34,6 +36,7 @@ export async function POST(request: Request) {
   try {
     await enforceRateLimit(request, 'checkout', 6, 60);
     const input = schema.parse(await request.json());
+    if (env.DEMO_DATA === 'true') throw new HttpError(503, 'Checkout is disabled while preview demo data is enabled.');
     await verifyTurnstile(input.turnstileToken, request);
     const stateCode = input.stateCode.toUpperCase() as StateCode;
     const state = STATE_BY_CODE.get(stateCode);
@@ -81,15 +84,17 @@ export async function POST(request: Request) {
       leaderCents,
       bidderIsLeader: winner?.listing.normalizedKey === destination.normalizedKey,
     });
+    const stateBorderColor = normalizeHexColor(input.stateBorderColor);
+    const stateFillColor = lighterColor(stateBorderColor);
     const attemptId = crypto.randomUUID();
     const now = Date.now();
     const expiresAt = now + 31 * 60 * 1000;
     await env.DB.prepare(`INSERT INTO bid_attempts(
         id, normalized_key, destination_type, canonical_url, provisional_title,
         provisional_description, provisional_logo_key, provisional_logo_content_type,
-        state_code, target_total_cents, existing_total_cents, charge_cents,
-        status, created_at, expires_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS INTEGER), CAST(? AS INTEGER), CAST(? AS INTEGER), 'pending', ?, ?)`)
+        state_code, state_border_color, state_fill_color, target_total_cents,
+        existing_total_cents, charge_cents, status, created_at, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS INTEGER), CAST(? AS INTEGER), CAST(? AS INTEGER), 'pending', ?, ?)`)
       .bind(
         attemptId,
         destination.normalizedKey,
@@ -100,6 +105,8 @@ export async function POST(request: Request) {
         identity.logo_key,
         identity.logo_content_type,
         stateCode,
+        stateBorderColor,
+        stateFillColor,
         targetCents.toString(),
         existingCents.toString(),
         quote.chargeCents.toString(),

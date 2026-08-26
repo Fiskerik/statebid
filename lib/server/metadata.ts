@@ -10,6 +10,17 @@ export type DiscoveredMetadata = {
 };
 
 export async function discoverMetadata(destination: NormalizedDestination): Promise<DiscoveredMetadata> {
+  // X profile pages are frequently rendered client-side or protected from
+  // server user-agents. Resolve the avatar through a small image endpoint so
+  // first-time previews still have the profile image available to cache.
+  if (destination.type === 'x') {
+    const handle = destination.normalizedKey.slice(2);
+    return {
+      title: destination.fallbackTitle,
+      description: 'X profile',
+      logoUrl: `https://unavatar.io/x/${encodeURIComponent(handle)}`,
+    };
+  }
   const { response, finalUrl } = await safeFetch(destination.canonicalUrl, 'document');
   const contentType = response.headers.get('content-type') ?? '';
   if (!contentType.includes('text/html')) throw new HttpError(400, 'The destination must return a public HTML page.');

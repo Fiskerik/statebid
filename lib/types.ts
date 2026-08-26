@@ -22,6 +22,8 @@ export type StatePosition = {
   clicks: number;
   takeoverCents: MoneyCents;
   reachedAt: number;
+  stateBorderColor: string;
+  stateFillColor: string;
 };
 
 export type DailyLeader = {

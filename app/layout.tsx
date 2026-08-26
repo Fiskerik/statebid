@@ -6,6 +6,12 @@ export const metadata: Metadata = {
   title: { default: 'StateBid — Own a piece of the map', template: '%s · StateBid' },
   description: 'Fifty states. Permanent standing bids. The highest verified bidder puts their logo on the map.',
   applicationName: 'StateBid',
+  keywords: ['state bidding', 'claim a state', 'US map advertising', 'paid placement', 'online billboard', 'StateBid'],
+  authors: [{ name: 'StateBid' }],
+  creator: 'StateBid',
+  publisher: 'StateBid',
+  category: 'business',
+  manifest: '/manifest.webmanifest',
   alternates: { canonical: '/' },
   robots: { index: true, follow: true },
   openGraph: {
@@ -25,10 +31,20 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: 'StateBid',
+    url: 'https://statebid.lol',
+    description: 'Claim one of 50 US states with a permanent verified advertising bid.',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web',
+    offers: { '@type': 'Offer', price: '1', priceCurrency: 'USD', description: 'Starting bid for an unclaimed state.' },
+  };
   return (
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
-      <body>{children}</body>
+      <body><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />{children}</body>
     </html>
   );
 }

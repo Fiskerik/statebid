@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
     const metadata = await discoverMetadata(destination).catch((error) => {
       if (destination.type !== 'x') throw error;
-      return { title: destination.fallbackTitle, description: 'X profile', logoUrl: null };
+      return { title: destination.fallbackTitle, description: 'X profile', logoUrl: `https://unavatar.io/x/${encodeURIComponent(destination.normalizedKey.slice(2))}` };
     });
     assertNoProhibitedIndicators(`${metadata.title} ${metadata.description}`);
     const previewId = crypto.randomUUID();
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         canonicalUrl: destination.canonicalUrl,
         title: metadata.title,
         description: metadata.description,
-        logoUrl: logoKey ? `/assets/${logoKey}` : null,
+        logoUrl: logoKey ? `/assets/${logoKey}` : destination.type === 'x' ? metadata.logoUrl : null,
       },
     };
     return Response.json(response);

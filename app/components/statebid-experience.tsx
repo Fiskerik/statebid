@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { geoAlbersUsa, geoPath } from 'd3-geo';
 import type { FeatureCollection, Geometry } from 'geojson';
 import { feature } from 'topojson-client';
@@ -10,6 +10,7 @@ import statesAtlas from 'us-atlas/states-10m.json';
 import { ArrowUpRight, Check, ChevronRight, CircleDollarSign, ExternalLink, LoaderCircle, Moon, Radio, ShieldCheck, Sun, Trophy, Upload, X } from 'lucide-react';
 import { STATE_BY_CODE, STATE_BY_FIPS, type StateCode } from '@/lib/states';
 import type { BoardSnapshot, CheckoutQuote, ListingPreview, PublicListing, StatePosition } from '@/lib/types';
+import { DEFAULT_STATE_BORDER, lighterColor } from '@/lib/colors';
 
 type AtlasObjects = { states: GeometryCollection };
 const atlas = statesAtlas as unknown as Topology<AtlasObjects>;
@@ -90,8 +91,10 @@ function MapSurface({ selected, positions, onSelect }: { selected: StateCode; po
       if (!state) return null;
       const position = positions.get(state.code);
       const callout = NORTHEAST_CALLOUTS[state.code];
+      const stateStyle = position ? { '--state-border': position.stateBorderColor, '--state-fill': position.stateFillColor } as CSSProperties : undefined;
       return <path key={state.code} d={map.path(item) ?? undefined}
         className={`state-shape ${position ? 'is-claimed' : ''} ${selected === state.code ? 'is-selected' : ''}`}
+        style={stateStyle}
         tabIndex={callout ? -1 : 0} role={callout ? undefined : 'button'} aria-hidden={callout ? true : undefined}
         aria-label={callout ? undefined : `${state.name}. ${position ? `${position.listing.title} leads at ${formatMoney(position.totalCents)}.` : 'Unclaimed. Claim for one dollar.'}`}
         onClick={() => onSelect(state.code)} onMouseEnter={() => scheduleHover(state.code)} onMouseLeave={cancelHover} onFocus={() => onSelect(state.code)}
@@ -236,7 +239,7 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
     <section className="all-states-section" id="all-states"><div><span className="eyebrow"><span /> Accessible list</span><h2>All 50 states</h2></div><div className="state-chip-grid">{[...STATE_BY_CODE.values()].map((item) => { const leader = positions.get(item.code); return <button key={item.code} onClick={() => { setSelected(item.code); document.getElementById('map')?.scrollIntoView({ behavior: 'smooth' }); }}><span>{item.code}</span><strong>{item.name}</strong><small>{leader ? formatMoney(leader.totalCents) : '$1 to claim'}</small></button>; })}</div></section>
 
     <section className="how-section" id="how-it-works"><div><span className="eyebrow"><span /> Plain rules, real stakes</span><h2>Money talks.<br />The map listens.</h2></div><div className="steps"><article><span>01</span><h3>Pick a state</h3><p>Choose any state. Empty ones start at a single dollar.</p></article><article><span>02</span><h3>Add your link</h3><p>Use a website or X handle. Identity locks on its first verified payment.</p></article><article><span>03</span><h3>Pay the difference</h3><p>Returning listings keep their standing total and only fund the raise.</p></article></div></section>
-    <footer><div className="wordmark footer-mark"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></div><p>Paid advertising, visibly ranked. Placement is not endorsement.</p><nav><a href="/about">About</a><a href="/rules">Rules</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></nav></footer>
+    <footer><div className="wordmark footer-mark"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></div><p>Paid advertising, visibly ranked. Placement is not endorsement. Inspired by <a href="https://outbid.lol" target="_blank" rel="noopener noreferrer">Outbid.lol</a>.</p><nav><a href="/about">About</a><a href="/rules">Rules</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></nav></footer>
     {claimOpen ? <ClaimDialog stateCode={selected} stateName={state.name} position={position} snapshot={snapshot} onClose={closeClaim} /> : null}
   </main>;
 }
@@ -257,6 +260,7 @@ function ClaimDialog({ stateCode, stateName, position, snapshot, onClose }: { st
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
   const [turnstileReset, setTurnstileReset] = useState(0);
+  const [stateBorderColor, setStateBorderColor] = useState(DEFAULT_STATE_BORDER);
   const firstInput = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -303,7 +307,7 @@ function ClaimDialog({ stateCode, stateName, position, snapshot, onClose }: { st
     if (!/^\d+$/.test(targetDollars)) { setError('Enter a whole-dollar target.'); return; }
     setBusy(true); setError(null);
     try {
-      const response = await fetch('/api/checkout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stateCode, destination, previewId: preview.previewId, targetTotalCents: (BigInt(targetDollars) * 100n).toString(), termsAccepted: true, turnstileToken }) });
+      const response = await fetch('/api/checkout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stateCode, destination, previewId: preview.previewId, targetTotalCents: (BigInt(targetDollars) * 100n).toString(), stateBorderColor, termsAccepted: true, turnstileToken }) });
       const payload = await response.json() as CheckoutQuote & { error?: string };
       if (!response.ok) throw new Error(payload.error ?? 'Could not create Checkout.');
       setQuote(payload); resetChallenge();
@@ -316,6 +320,7 @@ function ClaimDialog({ stateCode, stateName, position, snapshot, onClose }: { st
     {!quote ? <><label>Website or X handle<input ref={firstInput} type="text" value={destination} onChange={(event) => { setDestination(event.target.value); setPreview(null); }} placeholder="yourbrand.com or @handle" autoComplete="url" /></label><label>Your new standing total<div className="money-input"><span>$</span><input type="text" inputMode="numeric" pattern="[0-9]*" value={targetDollars} onChange={(event) => setTargetDollars(event.target.value.replace(/\D/g, ''))} /></div></label><div className="quote-row"><span>Current public minimum</span><strong>{formatMoney(position?.takeoverCents ?? '100')}</strong></div>
       {preview ? <div className="listing-preview-card"><Logo listing={preview.listing} /><div><span>{preview.existing ? 'Locked listing' : 'First-time identity'}</span><strong>{preview.listing.title}</strong><small>{preview.listing.canonicalUrl}</small></div><Check size={18} />{!preview.existing ? <label className="upload-button"><Upload size={14} /> Replace with PNG, JPEG, or WebP<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadLogo(file); }} /></label> : null}</div> : null}
       {preview ? <label className="terms-check"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} /><span>I accept the <a href="/terms" target="_blank">Terms</a> and understand this payment is a permanent standing bid, not a traffic guarantee.</span></label> : null}
+      {preview ? <div className="state-color-control"><div><strong>State color</strong><small>Choose the border. The fill uses a lighter tone automatically.</small></div><label className="color-picker-label"><input type="color" value={stateBorderColor} onChange={(event) => setStateBorderColor(event.target.value)} aria-label="State border color" /><span style={{ borderColor: stateBorderColor, background: lighterColor(stateBorderColor) }} /></label></div> : null}
       {snapshot.turnstileSiteKey ? <TurnstileWidget key={turnstileReset} siteKey={snapshot.turnstileSiteKey} onToken={setTurnstileToken} /> : null}{error ? <p className="form-error" role="alert">{error}</p> : null}
       {!preview ? <button className="claim-button large" type="button" disabled={busy || !destination || Boolean(snapshot.turnstileSiteKey && !turnstileToken)} onClick={previewListing}>{busy ? <LoaderCircle className="spin" size={17} /> : null} Preview your listing <ArrowUpRight size={17} /></button> : <button className="claim-button large" type="button" disabled={busy || !terms || !snapshot.checkoutEnabled || Boolean(snapshot.turnstileSiteKey && !turnstileToken)} onClick={createCheckout}>{busy ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />} {snapshot.checkoutEnabled ? 'Get secure Checkout quote' : 'Checkout setup required'}</button>}
     </> : <div className="checkout-quote-card"><span className="quote-ready"><Check size={15} /> Server-verified quote</span><div><span>New standing total</span><strong>{formatMoney(quote.targetTotalCents)}</strong></div><div><span>Existing standing credit</span><strong>− {formatMoney(quote.existingTotalCents)}</strong></div><div className="quote-charge"><span>Charged now</span><strong>{formatMoney(quote.chargeCents)}</strong></div><button className="claim-button large" type="button" onClick={() => window.location.assign(quote.checkoutUrl)}>Continue to Stripe <ArrowUpRight size={17} /></button><button className="text-button" type="button" onClick={() => setQuote(null)}>Change bid</button></div>}

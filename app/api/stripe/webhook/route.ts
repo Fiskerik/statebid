@@ -75,7 +75,7 @@ async function fulfillCheckout(stripe: Stripe, event: Stripe.Event, session: Str
   if (!attemptId || session.client_reference_id !== attemptId) throw new Error('Checkout attempt metadata mismatch.');
   const attempt = await env.DB.prepare(`SELECT id, normalized_key, destination_type, canonical_url,
       provisional_title, provisional_description, provisional_logo_key, provisional_logo_content_type,
-      state_code, charge_cents, stripe_session_id, status
+      state_code, state_border_color, state_fill_color, charge_cents, stripe_session_id, status
     FROM bid_attempts WHERE id = ? LIMIT 1`).bind(attemptId).first<{
       id: string;
       normalized_key: string;
@@ -86,6 +86,8 @@ async function fulfillCheckout(stripe: Stripe, event: Stripe.Event, session: Str
       provisional_logo_key: string | null;
       provisional_logo_content_type: string | null;
       state_code: string;
+      state_border_color: string;
+      state_fill_color: string;
       charge_cents: number;
       stripe_session_id: string | null;
       status: string;
@@ -128,8 +130,8 @@ async function fulfillCheckout(stripe: Stripe, event: Stripe.Event, session: Str
       ),
     env.DB.prepare(`INSERT OR IGNORE INTO bid_payments(
         id, stripe_event_id, stripe_session_id, stripe_payment_intent_id, stripe_charge_id,
-        listing_id, state_code, amount_cents, reversed_cents, paid_at
-      ) SELECT ?, ?, ?, ?, ?, id, ?, ?, 0, ? FROM listings WHERE normalized_key = ?`)
+        listing_id, state_code, state_border_color, state_fill_color, amount_cents, reversed_cents, paid_at
+      ) SELECT ?, ?, ?, ?, ?, id, ?, ?, ?, ?, 0, ? FROM listings WHERE normalized_key = ?`)
       .bind(
         paymentId,
         event.id,
@@ -137,6 +139,8 @@ async function fulfillCheckout(stripe: Stripe, event: Stripe.Event, session: Str
         paymentIntentId,
         chargeId,
         attempt.state_code,
+        attempt.state_border_color,
+        attempt.state_fill_color,
         attempt.charge_cents,
         paidAt,
         attempt.normalized_key,

@@ -21,6 +21,8 @@ npm run dev
 
 The public map renders a safe 50-state setup preview without service credentials and clearly disables Checkout. Persistent rankings require Turso, and logo caching requires Vercel Blob. Keep Stripe test mode enabled until every required launch item in `docs/launch-runbook.md` is complete.
 
+For a visual review deployment, set `DEMO_DATA=true` in Vercel Preview only. This shows the `@papuli88` X listing at a $1 standing total on California and Texas without inserting fake rows into the payment ledger. Leave it unset or `false` in Production.
+
 Useful checks:
 
 ```bash

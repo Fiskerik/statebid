@@ -11,6 +11,7 @@ import type {
   PublicListing,
   StatePosition,
 } from '@/lib/types';
+import { DEFAULT_STATE_BORDER, DEFAULT_STATE_FILL } from '@/lib/colors';
 
 type PositionRow = {
   state_code: StateCode;
@@ -25,6 +26,8 @@ type PositionRow = {
   daily_cents: number | string | null;
   reached_at: number;
   clicks: number | null;
+  state_border_color?: string | null;
+  state_fill_color?: string | null;
 };
 
 const TOTALS_CTE = `
@@ -46,7 +49,7 @@ const TOTALS_CTE = `
   )`;
 
 export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot> {
-  if (!isDatabaseConfigured()) return emptyBoardSnapshot(now);
+  if (!isDatabaseConfigured()) return withDemoData(emptyBoardSnapshot(now), now);
   await ensureDatabase();
   await maybeCleanupOperationalData(now).catch(() => undefined);
   const cutoff = now - ROLLING_DAY_MS;
@@ -64,6 +67,12 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
       )
       SELECT r.state_code, r.listing_id, l.normalized_key, l.destination_type,
         l.canonical_url, l.title, l.description, l.logo_key,
+        (SELECT style.state_border_color FROM bid_payments style
+          WHERE style.state_code = r.state_code AND style.listing_id = r.listing_id
+          ORDER BY style.paid_at ASC, style.id ASC LIMIT 1) AS state_border_color,
+        (SELECT style.state_fill_color FROM bid_payments style
+          WHERE style.state_code = r.state_code AND style.listing_id = r.listing_id
+          ORDER BY style.paid_at ASC, style.id ASC LIMIT 1) AS state_fill_color,
         CAST(r.total_cents AS TEXT) AS total_cents,
         CAST(COALESCE(d.daily_cents, 0) AS TEXT) AS daily_cents,
         r.reached_at, COALESCE(c.clicks, 0) AS clicks
@@ -136,7 +145,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
     }];
   });
   const mapValue = positions.reduce((total, position) => total + BigInt(position.totalCents), 0n);
-  return {
+  const snapshot: BoardSnapshot = {
     generatedAt: now,
     checkoutEnabled: Boolean(isAssetStorageConfigured() && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.SITE_URL),
     turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
@@ -155,6 +164,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
       claimedStates: positions.length,
     },
   };
+  return withDemoData(snapshot, now);
 }
 
 export async function getListingByKey(normalizedKey: string) {
@@ -197,7 +207,7 @@ export async function getStateLeaderTotal(stateCode: StateCode) {
 }
 
 export async function getStateWinner(stateCode: StateCode) {
-  if (!isDatabaseConfigured()) return null;
+  if (!isDatabaseConfigured()) return env.DEMO_DATA === 'true' ? demoPositions(Date.now()).find((position) => position.stateCode === stateCode) ?? null : null;
   await ensureDatabase();
   const cutoff = Date.now() - ROLLING_DAY_MS;
   const row = await env.DB.prepare(`${TOTALS_CTE},
@@ -209,6 +219,12 @@ export async function getStateWinner(stateCode: StateCode) {
     )
     SELECT r.state_code, r.listing_id, l.normalized_key, l.destination_type,
       l.canonical_url, l.title, l.description, l.logo_key,
+      (SELECT style.state_border_color FROM bid_payments style
+        WHERE style.state_code = r.state_code AND style.listing_id = r.listing_id
+        ORDER BY style.paid_at ASC, style.id ASC LIMIT 1) AS state_border_color,
+      (SELECT style.state_fill_color FROM bid_payments style
+        WHERE style.state_code = r.state_code AND style.listing_id = r.listing_id
+        ORDER BY style.paid_at ASC, style.id ASC LIMIT 1) AS state_fill_color,
       CAST(r.total_cents AS TEXT) AS total_cents,
       CAST(COALESCE(d.daily_cents, 0) AS TEXT) AS daily_cents,
       r.reached_at, COALESCE(c.clicks, 0) AS clicks
@@ -216,7 +232,7 @@ export async function getStateWinner(stateCode: StateCode) {
     LEFT JOIN daily d ON d.state_code = r.state_code AND d.listing_id = r.listing_id
     LEFT JOIN clicks c ON c.state_code = r.state_code AND c.listing_id = r.listing_id
     WHERE r.state_code = ? AND r.state_rank = 1 LIMIT 1`).bind(cutoff, stateCode).first<PositionRow>();
-  return row ? positionFromRow(row) : null;
+  return row ? positionFromRow(row) : env.DEMO_DATA === 'true' ? demoPositions(Date.now()).find((position) => position.stateCode === stateCode) ?? null : null;
 }
 
 export async function getCheckoutResult(sessionId: string) {
@@ -294,5 +310,70 @@ function positionFromRow(row: PositionRow): StatePosition {
     clicks: Number(row.clicks ?? 0),
     takeoverCents: (total + 100n).toString(),
     reachedAt: row.reached_at,
+    stateBorderColor: row.state_border_color ?? DEFAULT_STATE_BORDER,
+    stateFillColor: row.state_fill_color ?? DEFAULT_STATE_FILL,
   };
+}
+
+/** Preview-only fixture; it never writes fake payments to the ledger. */
+function withDemoData(snapshot: BoardSnapshot, now: number): BoardSnapshot {
+  if (env.DEMO_DATA !== 'true' || snapshot.positions.length > 0) return snapshot;
+  const positions = demoPositions(now);
+  const dailyLeaders: DailyLeader[] = positions.map((position) => ({
+    stateCode: position.stateCode,
+    stateName: position.stateName,
+    listing: position.listing,
+    dailyCents: position.dailyCents,
+    permanentCents: position.totalCents,
+    paidAt: position.reachedAt,
+  }));
+  const activity: ActivityItem[] = positions.map((position, index) => ({
+    id: `demo-payment-${index}`,
+    stateCode: position.stateCode,
+    stateName: position.stateName,
+    listing: position.listing,
+    amountCents: '100',
+    paidAt: position.reachedAt,
+  }));
+  const positionByCode = new Map(positions.map((position) => [position.stateCode, position]));
+  return {
+    ...snapshot,
+    checkoutEnabled: false,
+    states: US_STATES.map((state) => {
+      const winner = positionByCode.get(state.code) ?? null;
+      return { stateCode: state.code, stateName: state.name, winner, takeoverCents: winner?.takeoverCents ?? '100' };
+    }),
+    positions,
+    allTimeLeaders: positions,
+    dailyLeaders,
+    activity,
+    stats: { mapValueCents: '200', verifiedVolumeCents: '200', dailyVolumeCents: '200', claimedStates: 2 },
+  };
+}
+
+function demoPositions(now: number): StatePosition[] {
+  const listing: PublicListing = {
+    id: 'demo-papuli88',
+    normalizedKey: 'x:papuli88',
+    destinationType: 'x',
+    canonicalUrl: 'https://x.com/papuli88',
+    title: 'Papuli (@papuli88) on X',
+    description: 'Preview listing for the StateBid launch.',
+    logoUrl: 'https://unavatar.io/x/papuli88',
+  };
+  return (['CA', 'TX'] as const).map((stateCode) => {
+    const state = STATE_BY_CODE.get(stateCode)!;
+    return {
+      stateCode,
+      stateName: state.name,
+      listing,
+      totalCents: '100',
+      dailyCents: '100',
+      clicks: 0,
+      takeoverCents: '200',
+      reachedAt: now - 60_000,
+      stateBorderColor: DEFAULT_STATE_BORDER,
+      stateFillColor: DEFAULT_STATE_FILL,
+    };
+  });
 }
