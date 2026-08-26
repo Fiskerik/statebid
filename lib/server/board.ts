@@ -26,6 +26,7 @@ type PositionRow = {
   daily_cents: number | string | null;
   reached_at: number;
   clicks: number | null;
+  state_rank?: number;
   state_border_color?: string | null;
   state_fill_color?: string | null;
 };
@@ -53,7 +54,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
   await ensureDatabase();
   await maybeCleanupOperationalData(now).catch(() => undefined);
   const cutoff = now - ROLLING_DAY_MS;
-  const [positionsResult, dailyResult, activityResult, volumeRow, dailyVolumeRow] = await Promise.all([
+  const [positionsResult, bidderResult, dailyResult, activityResult, volumeRow, dailyVolumeRow] = await Promise.all([
     env.DB.prepare(`${TOTALS_CTE},
       daily AS (
         SELECT state_code, listing_id, SUM(amount_cents - reversed_cents) AS daily_cents
@@ -82,6 +83,30 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
       LEFT JOIN clicks c ON c.state_code = r.state_code AND c.listing_id = r.listing_id
       WHERE r.state_rank = 1
       ORDER BY r.total_cents DESC, r.reached_at ASC`).bind(cutoff).all<PositionRow>(),
+    env.DB.prepare(`${TOTALS_CTE},
+      daily AS (
+        SELECT state_code, listing_id, SUM(amount_cents - reversed_cents) AS daily_cents
+        FROM bid_payments WHERE paid_at >= ? GROUP BY state_code, listing_id
+      ), clicks AS (
+        SELECT state_code, listing_id, SUM(count) AS clicks FROM click_daily GROUP BY state_code, listing_id
+      )
+      SELECT r.state_code, r.listing_id, l.normalized_key, l.destination_type,
+        l.canonical_url, l.title, l.description, l.logo_key,
+        (SELECT style.state_border_color FROM bid_payments style
+          WHERE style.state_code = r.state_code AND style.listing_id = r.listing_id
+          ORDER BY style.paid_at ASC, style.id ASC LIMIT 1) AS state_border_color,
+        (SELECT style.state_fill_color FROM bid_payments style
+          WHERE style.state_code = r.state_code AND style.listing_id = r.listing_id
+          ORDER BY style.paid_at ASC, style.id ASC LIMIT 1) AS state_fill_color,
+        CAST(r.total_cents AS TEXT) AS total_cents,
+        CAST(COALESCE(d.daily_cents, 0) AS TEXT) AS daily_cents,
+        r.reached_at, COALESCE(c.clicks, 0) AS clicks, r.state_rank
+      FROM ranked r
+      JOIN listings l ON l.id = r.listing_id
+      LEFT JOIN daily d ON d.state_code = r.state_code AND d.listing_id = r.listing_id
+      LEFT JOIN clicks c ON c.state_code = r.state_code AND c.listing_id = r.listing_id
+      WHERE r.state_rank <= 3
+      ORDER BY r.state_code, r.state_rank`).bind(cutoff).all<PositionRow>(),
     env.DB.prepare(`WITH daily AS (
         SELECT state_code, listing_id,
           SUM(amount_cents - reversed_cents) AS daily_cents,
@@ -119,6 +144,10 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
   ]);
 
   const positions = positionsResult.results.map(positionFromRow);
+  const topBidders = emptyTopBidders();
+  for (const row of bidderResult.results) {
+    topBidders[row.state_code].push(positionFromRow(row));
+  }
   const positionByCode = new Map(positions.map((position) => [position.stateCode, position]));
   const dailyLeaders: DailyLeader[] = dailyResult.results.flatMap((row) => {
     const state = STATE_BY_CODE.get(row.state_code);
@@ -154,6 +183,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
       return { stateCode: state.code, stateName: state.name, winner, takeoverCents: winner?.takeoverCents ?? '100' };
     }),
     positions,
+    topBidders,
     allTimeLeaders: positions,
     dailyLeaders,
     activity,
@@ -274,6 +304,7 @@ function emptyBoardSnapshot(now: number): BoardSnapshot {
       takeoverCents: '100',
     })),
     positions: [],
+    topBidders: emptyTopBidders(),
     allTimeLeaders: [],
     dailyLeaders: [],
     activity: [],
@@ -315,10 +346,16 @@ function positionFromRow(row: PositionRow): StatePosition {
   };
 }
 
+function emptyTopBidders(): Record<StateCode, StatePosition[]> {
+  return Object.fromEntries(US_STATES.map((state) => [state.code, []])) as unknown as Record<StateCode, StatePosition[]>;
+}
+
 /** Preview-only fixture; it never writes fake payments to the ledger. */
 function withDemoData(snapshot: BoardSnapshot, now: number): BoardSnapshot {
   if (env.DEMO_DATA !== 'true' || snapshot.positions.length > 0) return snapshot;
   const positions = demoPositions(now);
+  const topBidders = emptyTopBidders();
+  for (const position of positions) topBidders[position.stateCode].push(position);
   const dailyLeaders: DailyLeader[] = positions.map((position) => ({
     stateCode: position.stateCode,
     stateName: position.stateName,
@@ -344,6 +381,7 @@ function withDemoData(snapshot: BoardSnapshot, now: number): BoardSnapshot {
       return { stateCode: state.code, stateName: state.name, winner, takeoverCents: winner?.takeoverCents ?? '100' };
     }),
     positions,
+    topBidders,
     allTimeLeaders: positions,
     dailyLeaders,
     activity,

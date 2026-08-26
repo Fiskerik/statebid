@@ -135,8 +135,9 @@ button { color: inherit; }
 .detail-links { display: flex; justify-content: space-between; gap: 10px; margin: -2px 1px 12px; }
 .detail-links a { color: var(--muted); font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
 .detail-links a:hover { color: var(--ink); }
-.available-copy { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.available-copy { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 14px; }
 .claim-button { width: 100%; padding: 11px 12px; font-size: 11px; }
+.state-detail-card .claim-button { margin-top: 4px; }
 .claim-button.large { padding: 14px; font-size: 12px; }
 .map-legend { height: 46px; padding: 0 20px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 18px; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
 .map-legend span { display: flex; align-items: center; gap: 6px; }
@@ -157,11 +158,19 @@ button { color: inherit; }
 .all-states-section { max-width: 1600px; margin: 0 auto; padding: 100px clamp(20px, 4vw, 64px) 20px; display: grid; grid-template-columns: .35fr 1.65fr; gap: 60px; }
 .all-states-section h2 { font-size: clamp(38px, 4vw, 62px); letter-spacing: -.065em; margin: 18px 0; }
 .state-chip-grid { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
-.state-chip-grid button { border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: transparent; text-align: left; padding: 13px; cursor: pointer; min-width: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
-.state-chip-grid button:hover, .state-chip-grid button:focus-visible { background: var(--soft); outline: 2px solid var(--accent); outline-offset: -2px; }
-.state-chip-grid span { color: var(--accent-border); border: 1px solid var(--accent-border); border-radius: 4px; padding: 2px 3px; width: max-content; font: 750 9px/1 ui-monospace, monospace; }
-.state-chip-grid strong { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.state-chip-grid small { grid-column: 2; color: var(--muted); font-size: 8px; }
+.state-chip-grid button { border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: transparent; text-align: left; padding: 0; cursor: pointer; min-width: 0; position: relative; }
+.state-chip-grid button:hover, .state-chip-grid button:focus-visible, .state-chip-grid button.is-expanded { background: var(--soft); outline: 2px solid var(--accent); outline-offset: -2px; z-index: 4; }
+.state-chip-summary { padding: 13px; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
+.state-chip-summary > span { color: var(--accent-border); border: 1px solid var(--accent-border); border-radius: 4px; padding: 2px 3px; width: max-content; font: 750 9px/1 ui-monospace, monospace; }
+.state-chip-summary strong { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.state-chip-summary small { grid-column: 2; color: var(--muted); font-size: 8px; }
+.state-bidders-dropdown { position: absolute; top: calc(100% - 1px); left: -1px; width: calc(100% + 2px); display: grid; gap: 8px; padding: 11px; border: 1px solid var(--accent); background: var(--surface-strong); box-shadow: 0 14px 30px rgb(0 0 0 / 15%); z-index: 5; }
+.state-bidders-title { color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .1em; font-weight: 750; }
+.state-bidder-row { display: grid; grid-template-columns: 22px 27px minmax(0, 1fr); align-items: center; gap: 7px; text-align: left; }
+.state-bidder-row .brand-logo { width: 27px; height: 27px; }
+.state-bidder-row > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.state-bidder-row strong { font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.state-bidder-row small, .state-bidders-empty { color: var(--muted); font-size: 8px; }
 
 .how-section { max-width: 1600px; margin: 0 auto; padding: 110px clamp(20px, 4vw, 64px); display: grid; grid-template-columns: .75fr 1.25fr; gap: 80px; }
 .how-section h2 { font-size: clamp(46px, 5vw, 78px); letter-spacing: -.07em; line-height: .92; margin: 24px 0; }
@@ -322,7 +331,8 @@ footer nav { display: flex; justify-content: flex-end; gap: 20px; }
   .market-grid { display: flex; flex-direction: column; }
   .map-column { order: -1; }
   .map-card { min-height: 510px; }
-  .state-map { min-height: 440px; inset: -20px -40px auto; width: calc(100% + 80px); }
+  .map-card { height: 510px; }
+  .state-map { position: absolute; inset: 0; width: 100%; height: 355px; min-height: 0; }
   .state-detail-card { position: relative; left: auto; right: auto; bottom: auto; width: auto; margin: 355px 14px 14px; }
   .map-legend { display: none; }
   .boards-mobile-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface); }
@@ -361,6 +371,7 @@ footer nav { display: flex; justify-content: flex-end; gap: 20px; }
   .state-chip-grid { grid-template-columns: repeat(2, 1fr); }
   .claim-modal { padding: 24px 18px; border-radius: 14px; }
   .claim-modal h2 { font-size: 33px; }
+  .claim-modal input, .claim-modal select, .claim-modal textarea { font-size: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

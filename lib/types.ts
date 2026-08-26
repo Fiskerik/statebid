@@ -57,6 +57,7 @@ export type BoardSnapshot = {
   turnstileSiteKey: string | null;
   states: BoardState[];
   positions: StatePosition[];
+  topBidders: Record<StateCode, StatePosition[]>;
   allTimeLeaders: StatePosition[];
   dailyLeaders: DailyLeader[];
   activity: ActivityItem[];
