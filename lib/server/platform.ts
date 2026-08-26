@@ -77,6 +77,7 @@ export type RuntimeEnv = {
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_TAX_ENABLED?: string;
+  STRIPE_ALLOW_PROMOTION_CODES?: string;
   SITE_URL?: string;
   DEMO_DATA?: string;
   TURNSTILE_SITE_KEY?: string;

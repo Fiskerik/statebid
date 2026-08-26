@@ -124,6 +124,7 @@ export async function POST(request: Request) {
         metadata: { attemptId },
         payment_intent_data: { metadata: { attemptId } },
         billing_address_collection: 'required',
+        allow_promotion_codes: env.STRIPE_ALLOW_PROMOTION_CODES !== 'false',
         automatic_tax: { enabled: env.STRIPE_TAX_ENABLED === 'true' },
         expires_at: Math.floor(expiresAt / 1000),
         success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
