@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env, isAssetStorageConfigured, isDatabaseConfigured } from '@/lib/server/platform';
 import { ensureDatabase } from '@/db/runtime';
 import { maybeCleanupOperationalData } from '@/lib/server/cleanup';
 import { STATE_BY_CODE, US_STATES, type StateCode } from '@/lib/states';
@@ -46,6 +46,7 @@ const TOTALS_CTE = `
   )`;
 
 export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot> {
+  if (!isDatabaseConfigured()) return emptyBoardSnapshot(now);
   await ensureDatabase();
   await maybeCleanupOperationalData(now).catch(() => undefined);
   const cutoff = now - ROLLING_DAY_MS;
@@ -137,7 +138,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
   const mapValue = positions.reduce((total, position) => total + BigInt(position.totalCents), 0n);
   return {
     generatedAt: now,
-    checkoutEnabled: Boolean(env.STRIPE_SECRET_KEY && env.SITE_URL),
+    checkoutEnabled: Boolean(isAssetStorageConfigured() && env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.SITE_URL),
     turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
     states: US_STATES.map((state) => {
       const winner = positionByCode.get(state.code) ?? null;
@@ -157,6 +158,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
 }
 
 export async function getListingByKey(normalizedKey: string) {
+  if (!isDatabaseConfigured()) return null;
   await ensureDatabase();
   return env.DB.prepare(`SELECT id, normalized_key, destination_type, canonical_url, title,
       description, logo_key, logo_content_type, status, created_at
@@ -175,6 +177,7 @@ export async function getListingByKey(normalizedKey: string) {
 }
 
 export async function getListingTotal(normalizedKey: string, stateCode: StateCode) {
+  if (!isDatabaseConfigured()) return 0n;
   await ensureDatabase();
   const row = await env.DB.prepare(`SELECT CAST(MAX(COALESCE(SUM(p.amount_cents - p.reversed_cents), 0), 0) AS TEXT) AS total_cents
     FROM bid_payments p JOIN listings l ON l.id = p.listing_id
@@ -183,6 +186,7 @@ export async function getListingTotal(normalizedKey: string, stateCode: StateCod
 }
 
 export async function getStateLeaderTotal(stateCode: StateCode) {
+  if (!isDatabaseConfigured()) return 0n;
   await ensureDatabase();
   const row = await env.DB.prepare(`SELECT CAST(MAX(COALESCE(MAX(total_cents), 0), 0) AS TEXT) AS leader_cents FROM (
       SELECT p.listing_id, SUM(p.amount_cents - p.reversed_cents) AS total_cents
@@ -193,6 +197,7 @@ export async function getStateLeaderTotal(stateCode: StateCode) {
 }
 
 export async function getStateWinner(stateCode: StateCode) {
+  if (!isDatabaseConfigured()) return null;
   await ensureDatabase();
   const cutoff = Date.now() - ROLLING_DAY_MS;
   const row = await env.DB.prepare(`${TOTALS_CTE},
@@ -215,6 +220,7 @@ export async function getStateWinner(stateCode: StateCode) {
 }
 
 export async function getCheckoutResult(sessionId: string) {
+  if (!isDatabaseConfigured()) return null;
   await ensureDatabase();
   return env.DB.prepare(`SELECT a.id AS attempt_id, a.state_code, a.target_total_cents,
       a.charge_cents, a.status, a.normalized_key, l.id AS listing_id, l.title,
@@ -238,6 +244,30 @@ export async function getCheckoutResult(sessionId: string) {
       logo_key: string | null;
       listing_total_cents: string;
     }>();
+}
+
+function emptyBoardSnapshot(now: number): BoardSnapshot {
+  return {
+    generatedAt: now,
+    checkoutEnabled: false,
+    turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
+    states: US_STATES.map((state) => ({
+      stateCode: state.code,
+      stateName: state.name,
+      winner: null,
+      takeoverCents: '100',
+    })),
+    positions: [],
+    allTimeLeaders: [],
+    dailyLeaders: [],
+    activity: [],
+    stats: {
+      mapValueCents: '0',
+      verifiedVolumeCents: '0',
+      dailyVolumeCents: '0',
+      claimedStates: 0,
+    },
+  };
 }
 
 function listingFromRow(row: PositionRow): PublicListing {

@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { sanitizeImage } from '@/lib/images';
 import type { NormalizedDestination } from '@/lib/listings';
 import { assertPublicNetworkHost, HttpError } from './security';

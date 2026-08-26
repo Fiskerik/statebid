@@ -24,32 +24,29 @@
 - Exercise first claims, repeat-listing raises, same listing on another state, retries, concurrent stale Checkouts, partial/full refunds, dispute open/won/lost, and failed/expired sessions.
 - Confirm the success page reports a paid-but-not-winning race without refunding or losing either payment.
 
-## 3. Cloudflare and application security
+## 3. Vercel data services and application security
 
-- Configure D1 as `DB`, R2 as `FILES`, a random `RATE_LIMIT_SALT`, and Cloudflare Turnstile keys.
-- Configure `ADMIN_USER_IDS` with stable platform user IDs; use email only as a temporary secondary allowlist.
-- Restrict Sites access to the operator during acceptance. Verify production strips and replaces spoofed `oai-authenticated-user-*` headers.
-- Review destination/content blocklists, abuse thresholds, R2 lifecycle behavior, and `/admin` moderation fallbacks.
-- Verify the R2 bucket is not directly public; assets should be served only through `/assets/*` with nosniff/CSP headers.
+- Create a Turso database and configure `TURSO_DATABASE_URL` plus `TURSO_AUTH_TOKEN` in the Vercel Preview and Production environments.
+- Create a private Vercel Blob store and verify `BLOB_READ_WRITE_TOKEN` is injected into new deployments.
+- Configure long, unique `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_SESSION_SECRET` values. Confirm `/admin` rejects an absent or invalid signed session.
+- Configure a random `RATE_LIMIT_SALT` and Cloudflare Turnstile keys.
+- Review destination/content blocklists, abuse thresholds, Blob retention behavior, and `/admin` moderation fallbacks.
+- Assets should be served through `/assets/*` with immutable caching, `nosniff`, and restrictive CSP headers.
 
 ## 4. Monitoring and reconciliation
 
 - Alert on non-2xx responses from `/api/stripe/webhook`, failed `webhook_events`, and a `/api/health` status other than `ready`.
-- Create Cloudflare log alerts for uncaught Worker exceptions and sustained 5xx rates.
+- Create Vercel log/observability alerts for uncaught function exceptions and sustained 5xx rates.
 - In `/admin`, reconcile recent payment rows with their Stripe PaymentIntent/Session IDs and investigate paid attempts that lack a ledger entry.
 - Review open content reports and suspended listings daily during launch.
-- Treat Stripe Dashboard payment status as the payment-system record and the D1 ledger as the ranking record; never edit verified payment rows manually.
+- Treat Stripe Dashboard payment status as the payment-system record and the libSQL ledger as the ranking record; never edit verified payment rows manually.
 
 ## 5. Backups and recovery
 
-- Export D1 before a release and on a scheduled operational cadence:
-
-  ```bash
-  npx wrangler d1 export <database-name> --remote --output statebid-YYYY-MM-DD.sql
-  ```
+- Export the Turso/libSQL database before a release and on a scheduled operational cadence using the provider's supported backup/export tooling.
 
 - Store exports encrypted with restricted operator access and test a restore into a separate test database.
-- Enable R2 object versioning or an equivalent backup policy for permanent logo keys.
+- Configure an equivalent backup/retention policy for permanent Vercel Blob logo keys.
 - Never restore only rankings: restore the payment/reversal ledger and recompute winners from it.
 
 ## 6. Production acceptance

@@ -1,13 +1,10 @@
-import { env } from 'cloudflare:workers';
-import { drizzle } from 'drizzle-orm/d1';
+import { drizzle } from 'drizzle-orm/libsql';
+import { getLibsqlClient, isDatabaseConfigured } from '@/lib/server/platform';
 import * as schema from './schema';
 
 export function getDb() {
-  if (!env.DB) {
-    throw new Error(
-      'Cloudflare D1 binding `DB` is unavailable. Set the `d1` field in .openai/hosting.json to `DB` or let your control plane inject the real binding values before using the database.',
-    );
+  if (!isDatabaseConfigured()) {
+    throw new Error('Database is not configured. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN before using Drizzle.');
   }
-
-  return drizzle(env.DB, { schema });
+  return drizzle(getLibsqlClient(), { schema });
 }

@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env, isDatabaseConfigured } from '@/lib/server/platform';
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS listings (
@@ -143,23 +143,23 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_content_reports_listing ON content_reports(listing_id, created_at)`,
 ] as const;
 
-let initialization: Promise<void> | null = null;
+let initialization: { key: string; promise: Promise<void> } | null = null;
 
 export async function ensureDatabase() {
-  if (!initialization) {
-    initialization = (async () => {
+  // Public/setup deployments intentionally work without persistence. Callers
+  // can use isDatabaseConfigured() to render an empty/setup experience.
+  if (!isDatabaseConfigured()) return;
+  const key = `${env.TURSO_DATABASE_URL ?? ''}\u0000${env.TURSO_AUTH_TOKEN ?? ''}`;
+  if (!initialization || initialization.key !== key) {
+    const promise = (async () => {
       await env.DB.batch(SCHEMA_STATEMENTS.map((statement) => env.DB.prepare(statement)));
-      const columns = await env.DB.prepare('PRAGMA table_info(bid_payments)').all<{ name: string }>();
-      if (!columns.results.some((column) => column.name === 'stripe_charge_id')) {
-        await env.DB.prepare('ALTER TABLE bid_payments ADD COLUMN stripe_charge_id TEXT').run();
-      }
-      await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_bid_payments_charge ON bid_payments(stripe_charge_id)').run();
     })().catch((error) => {
-      initialization = null;
+      if (initialization?.key === key) initialization = null;
       throw error;
     });
+    initialization = { key, promise };
   }
-  await initialization;
+  await initialization.promise;
 }
 
 export function getRawDb() {

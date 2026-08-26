@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { z } from 'zod';
 import { ensureDatabase } from '@/db/runtime';
 import { assertNoProhibitedIndicators, normalizeDestination } from '@/lib/listings';

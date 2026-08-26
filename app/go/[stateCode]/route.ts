@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { ensureDatabase } from '@/db/runtime';
 import { getStateWinner } from '@/lib/server/board';
 import { hashValue } from '@/lib/server/security';

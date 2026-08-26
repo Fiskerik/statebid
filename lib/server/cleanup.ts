@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { ensureDatabase } from '@/db/runtime';
 
 export async function cleanupExpiredPreviews(now = Date.now(), limit = 20) {

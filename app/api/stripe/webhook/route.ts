@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import Stripe from 'stripe';
 import { ensureDatabase } from '@/db/runtime';
 import { getStripe } from '@/lib/server/stripe';

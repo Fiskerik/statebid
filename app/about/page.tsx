@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { LegalPage } from '@/app/components/legal-page';
 
 export const metadata: Metadata = { title: 'About', description: 'Why StateBid turns the US map into a transparent attention market.' };

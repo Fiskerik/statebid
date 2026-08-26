@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { LegalPage } from '@/app/components/legal-page';
 
 export const metadata: Metadata = { title: 'Terms', description: 'Terms for purchasing StateBid paid placements.' };

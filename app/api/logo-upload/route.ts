@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { ensureDatabase } from '@/db/runtime';
 import { sanitizeImage } from '@/lib/images';
 import { normalizeDestination } from '@/lib/listings';

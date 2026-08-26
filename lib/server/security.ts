@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/server/platform';
 import { ensureDatabase } from '@/db/runtime';
 import { assertAllowedHostname, isPrivateIpLiteral, isPrivateIpv6Literal } from '@/lib/listings';
 
@@ -25,7 +25,10 @@ export async function enforceRateLimit(
   windowSeconds: number,
 ) {
   await ensureDatabase();
-  const ip = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'local';
+  const ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]
+    ?? request.headers.get('x-forwarded-for')?.split(',')[0]
+    ?? request.headers.get('cf-connecting-ip')
+    ?? 'local';
   const userAgent = request.headers.get('user-agent') ?? 'unknown';
   const fingerprint = await hashValue(`${env.RATE_LIMIT_SALT ?? 'statebid-local'}:${ip}:${userAgent}`);
   const key = `${action}:${fingerprint}`;
@@ -97,6 +100,9 @@ function isIpLiteral(hostname: string) {
 
 export function jsonError(error: unknown) {
   if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
+  if (error instanceof Error && error.name === 'PlatformSetupError') {
+    return Response.json({ error: 'StateBid is not fully configured yet.' }, { status: 503 });
+  }
   if (error instanceof Error && ['DestinationError', 'BidRuleError', 'ZodError'].includes(error.name)) {
     return Response.json({ error: error.name === 'ZodError' ? 'Check the submitted fields and try again.' : error.message }, { status: 400 });
   }

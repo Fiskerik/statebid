@@ -1,13 +1,15 @@
-import { env } from 'cloudflare:workers';
+import { env, isDatabaseConfigured } from '@/lib/server/platform';
 import Link from 'next/link';
 import { ensureDatabase } from '@/db/runtime';
-import { chatGPTSignOutPath } from '@/app/chatgpt-auth';
 import { requireAdminPage } from '@/lib/server/admin';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
   const user = await requireAdminPage('/admin');
+  if (!isDatabaseConfigured()) {
+    return <main className="legal-shell admin-shell"><header className="legal-header"><Link className="wordmark" href="/"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></Link><div className="admin-identity"><span>{user.displayName}</span><form action="/api/admin/logout" method="post"><button type="submit">Sign out</button></form></div></header><section className="legal-hero"><span className="eyebrow"><span /> Operator only</span><h1>Database setup required.</h1><p>Connect Turso in Vercel and redeploy before using payments, reports, or moderation.</p></section></main>;
+  }
   await ensureDatabase();
   const [listings, payments, reports, webhooks] = await Promise.all([
     env.DB.prepare(`SELECT l.id, l.title, l.normalized_key, l.status, l.created_at,
@@ -38,7 +40,7 @@ export default async function AdminPage() {
     <main className="legal-shell admin-shell">
       <header className="legal-header">
         <Link className="wordmark" href="/"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></Link>
-        <div className="admin-identity"><span>{user.displayName}</span><a href={chatGPTSignOutPath('/admin')}>Sign out</a></div>
+        <div className="admin-identity"><span>{user.displayName}</span><form action="/api/admin/logout" method="post"><button type="submit">Sign out</button></form></div>
       </header>
       <section className="legal-hero"><span className="eyebrow"><span /> Operator only</span><h1>Trust &amp; payments</h1><p>Review verified payments, reports, moderation state, and webhook health.</p></section>
 

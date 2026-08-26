@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env, isDatabaseConfigured } from '@/lib/server/platform';
 import { ensureDatabase } from '@/db/runtime';
 import { requireAdminApi } from '@/lib/server/admin';
 
@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   const auth = await requireAdminApi();
   if ('response' in auth) return auth.response;
+  if (!isDatabaseConfigured()) return Response.json({ error: 'Database setup required.' }, { status: 503 });
   const origin = request.headers.get('origin');
   if (origin && origin !== new URL(request.url).origin) return Response.json({ error: 'Invalid request origin.' }, { status: 403 });
   const form = await request.formData();
