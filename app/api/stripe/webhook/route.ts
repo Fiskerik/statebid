@@ -93,7 +93,10 @@ async function fulfillCheckout(stripe: Stripe, event: Stripe.Event, session: Str
       status: string;
     }>();
   if (!attempt) throw new Error('Checkout attempt not found.');
-  if (attempt.stripe_session_id !== session.id || session.currency !== 'usd' || session.amount_total !== attempt.charge_cents) {
+  // Validate the quoted bid against the Checkout subtotal. Promotion codes
+  // and Stripe Tax may change the final amount charged, but never the bid
+  // amount credited to the permanent standing total.
+  if (attempt.stripe_session_id !== session.id || session.currency !== 'usd' || session.amount_subtotal !== attempt.charge_cents) {
     throw new Error('Paid Checkout does not match the immutable attempt.');
   }
 
