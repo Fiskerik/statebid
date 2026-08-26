@@ -215,7 +215,7 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
         <div className="panel-heading"><div><span className="panel-kicker"><Trophy size={13} /> All time</span><h2>Permanent leaders</h2></div><span className="count-badge">{snapshot.positions.length}</span></div>
         <div className="leader-list">{snapshot.allTimeLeaders.length ? snapshot.allTimeLeaders.map((item, index) => <button key={item.stateCode} className={`leader-row ${selected === item.stateCode ? 'is-active' : ''}`} type="button" onClick={() => setSelected(item.stateCode)}>
           <span className="rank">{String(index + 1).padStart(2, '0')}</span><Logo listing={item.listing} /><span className="leader-copy"><strong>{item.listing.title}</strong><small>{item.stateName}</small></span><span className="leader-amount"><strong>{formatMoney(item.totalCents)}</strong><small>{formatMoney(item.takeoverCents)} to claim</small></span>
-        </button>) : <EmptyPanel title="The map is wide open" copy="Be the first verified bidder to claim a state for $1." />}</div>
+        </button>) : <EmptyPanel title="The map is wide open" copy="Be the first verified bidder to claim any state for $1." onClaim={openClaim} />}</div>
         <a className="panel-link" href="#all-states">View all 50 states <ChevronRight size={15} /></a>
       </aside>
 
@@ -246,8 +246,8 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
 
 function roundCoordinate(value: number) { return Math.round(value * 100) / 100; }
 
-function EmptyPanel({ title, copy }: { title: string; copy: string }) {
-  return <div className="empty-panel"><span>01</span><strong>{title}</strong><p>{copy}</p></div>;
+function EmptyPanel({ title, copy, onClaim }: { title: string; copy: string; onClaim?: () => void }) {
+  return <div className="empty-panel"><span>01</span><strong>{title}</strong><p>{copy}</p>{onClaim ? <button className="empty-cta" type="button" onClick={onClaim}>Claim a state for $1 <ArrowUpRight size={13} /></button> : null}</div>;
 }
 
 function ClaimDialog({ stateCode, stateName, position, snapshot, onClose }: { stateCode: StateCode; stateName: string; position?: StatePosition; snapshot: BoardSnapshot; onClose: () => void }) {
