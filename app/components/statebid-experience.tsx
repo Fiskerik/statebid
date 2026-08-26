@@ -206,7 +206,7 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
 
     {notice ? <div className="site-notice" role="status"><span>{notice}</span><button onClick={() => setNotice(null)} aria-label="Dismiss"><X size={15} /></button></div> : null}
 
-    <section className="hero" id="top"><div><div className="eyebrow"><span /> 50 states. One leader each.</div><h1>Own a piece<br />of the map.</h1><p>Every state is permanent paid placement. The highest verified standing bid gets the logo—and the attention.</p></div>
+    <section className="intro-banner" id="top"><div className="intro-copy"><div className="eyebrow"><span /> 50 states. One leader each.</div><h1>Own a piece of the map.</h1><p>Permanent paid placement. The highest verified standing bid gets the logo—and the attention.</p></div>
       <div className="hero-stats" aria-label="Live marketplace statistics"><div><span>Total map value</span><strong>{formatMoney(snapshot.stats.mapValueCents)}</strong></div><div><span>States claimed</span><strong>{snapshot.stats.claimedStates} <small>/ 50</small></strong></div><div><span>Last 24 hours</span><strong>{formatMoney(snapshot.stats.dailyVolumeCents)}</strong></div></div>
     </section>
 
