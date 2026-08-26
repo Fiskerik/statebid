@@ -1,0 +1,250 @@
+import { env } from 'cloudflare:workers';
+import { ensureDatabase } from '@/db/runtime';
+import { STATE_BY_CODE, type StateCode } from '@/lib/states';
+import type {
+  ActivityItem,
+  BoardSnapshot,
+  DailyLeader,
+  DestinationType,
+  PublicListing,
+  StatePosition,
+} from '@/lib/types';
+
+type PositionRow = {
+  state_code: StateCode;
+  listing_id: string;
+  normalized_key: string;
+  destination_type: DestinationType;
+  canonical_url: string;
+  title: string;
+  description: string;
+  logo_key: string | null;
+  total_cents: number | string;
+  daily_cents: number | string | null;
+  reached_at: number;
+  clicks: number | null;
+};
+
+const TOTALS_CTE = `
+  WITH totals AS (
+    SELECT p.state_code, p.listing_id,
+      SUM(p.amount_cents - p.reversed_cents) AS total_cents,
+      MAX(p.paid_at) AS reached_at
+    FROM bid_payments p
+    GROUP BY p.state_code, p.listing_id
+    HAVING SUM(p.amount_cents - p.reversed_cents) > 0
+  ), ranked AS (
+    SELECT t.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY t.state_code
+        ORDER BY t.total_cents DESC, t.reached_at ASC, t.listing_id ASC
+      ) AS state_rank
+    FROM totals t
+    JOIN listings l ON l.id = t.listing_id AND l.status = 'active'
+  )`;
+
+export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot> {
+  await ensureDatabase();
+  const cutoff = now - 24 * 60 * 60 * 1000;
+  const [positionsResult, dailyResult, activityResult, volumeRow, dailyVolumeRow] = await Promise.all([
+    env.DB.prepare(`${TOTALS_CTE},
+      daily AS (
+        SELECT state_code, listing_id, SUM(amount_cents - reversed_cents) AS daily_cents
+        FROM bid_payments
+        WHERE paid_at >= ?
+        GROUP BY state_code, listing_id
+      ), clicks AS (
+        SELECT state_code, listing_id, COUNT(*) AS clicks
+        FROM click_events
+        GROUP BY state_code, listing_id
+      )
+      SELECT r.state_code, r.listing_id, l.normalized_key, l.destination_type,
+        l.canonical_url, l.title, l.description, l.logo_key,
+        CAST(r.total_cents AS TEXT) AS total_cents,
+        CAST(COALESCE(d.daily_cents, 0) AS TEXT) AS daily_cents,
+        r.reached_at, COALESCE(c.clicks, 0) AS clicks
+      FROM ranked r
+      JOIN listings l ON l.id = r.listing_id
+      LEFT JOIN daily d ON d.state_code = r.state_code AND d.listing_id = r.listing_id
+      LEFT JOIN clicks c ON c.state_code = r.state_code AND c.listing_id = r.listing_id
+      WHERE r.state_rank = 1
+      ORDER BY r.total_cents DESC, r.reached_at ASC`).bind(cutoff).all<PositionRow>(),
+    env.DB.prepare(`WITH daily AS (
+        SELECT state_code, listing_id,
+          SUM(amount_cents - reversed_cents) AS daily_cents,
+          MIN(paid_at) AS first_paid_at
+        FROM bid_payments
+        WHERE paid_at >= ?
+        GROUP BY state_code, listing_id
+        HAVING SUM(amount_cents - reversed_cents) > 0
+      ), totals AS (
+        SELECT state_code, listing_id, SUM(amount_cents - reversed_cents) AS total_cents
+        FROM bid_payments GROUP BY state_code, listing_id
+      )
+      SELECT d.state_code, d.listing_id, l.normalized_key, l.destination_type,
+        l.canonical_url, l.title, l.description, l.logo_key,
+        CAST(d.daily_cents AS TEXT) AS daily_cents,
+        CAST(t.total_cents AS TEXT) AS total_cents,
+        d.first_paid_at
+      FROM daily d
+      JOIN totals t ON t.state_code = d.state_code AND t.listing_id = d.listing_id
+      JOIN listings l ON l.id = d.listing_id AND l.status = 'active'
+      ORDER BY d.daily_cents DESC, d.first_paid_at ASC, d.listing_id ASC
+      LIMIT 20`).bind(cutoff).all<PositionRow & { first_paid_at: number }>(),
+    env.DB.prepare(`SELECT p.id, p.state_code, p.listing_id,
+        (p.amount_cents - p.reversed_cents) AS amount_cents, p.paid_at,
+        l.normalized_key, l.destination_type, l.canonical_url, l.title, l.description, l.logo_key
+      FROM bid_payments p
+      JOIN listings l ON l.id = p.listing_id AND l.status = 'active'
+      WHERE p.amount_cents > p.reversed_cents
+      ORDER BY p.paid_at DESC, p.id DESC
+      LIMIT 12`).all<PositionRow & { id: string; amount_cents: number; paid_at: number }>(),
+    env.DB.prepare(`SELECT CAST(COALESCE(SUM(amount_cents - reversed_cents), 0) AS TEXT) AS volume_cents
+      FROM bid_payments`).first<{ volume_cents: string }>(),
+    env.DB.prepare(`SELECT CAST(COALESCE(SUM(amount_cents - reversed_cents), 0) AS TEXT) AS volume_cents
+      FROM bid_payments WHERE paid_at >= ?`).bind(cutoff).first<{ volume_cents: string }>(),
+  ]);
+
+  const positions = positionsResult.results.map(positionFromRow);
+  const dailyLeaders: DailyLeader[] = dailyResult.results.flatMap((row) => {
+    const state = STATE_BY_CODE.get(row.state_code);
+    if (!state) return [];
+    return [{
+      stateCode: row.state_code,
+      stateName: state.name,
+      listing: listingFromRow(row),
+      dailyCents: String(row.daily_cents),
+      permanentCents: String(row.total_cents),
+      paidAt: row.first_paid_at,
+    }];
+  });
+  const activity: ActivityItem[] = activityResult.results.flatMap((row) => {
+    const state = STATE_BY_CODE.get(row.state_code);
+    if (!state) return [];
+    return [{
+      id: row.id,
+      stateCode: row.state_code,
+      stateName: state.name,
+      listing: listingFromRow(row),
+      amountCents: String(row.amount_cents),
+      paidAt: row.paid_at,
+    }];
+  });
+  const mapValue = positions.reduce((total, position) => total + BigInt(position.totalCents), 0n);
+  return {
+    generatedAt: now,
+    checkoutEnabled: Boolean(env.STRIPE_SECRET_KEY && env.SITE_URL),
+    turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
+    positions,
+    allTimeLeaders: positions,
+    dailyLeaders,
+    activity,
+    stats: {
+      mapValueCents: mapValue.toString(),
+      verifiedVolumeCents: volumeRow?.volume_cents ?? '0',
+      dailyVolumeCents: dailyVolumeRow?.volume_cents ?? '0',
+      claimedStates: positions.length,
+    },
+  };
+}
+
+export async function getListingByKey(normalizedKey: string) {
+  await ensureDatabase();
+  return env.DB.prepare(`SELECT id, normalized_key, destination_type, canonical_url, title,
+      description, logo_key, logo_content_type, status, created_at
+    FROM listings WHERE normalized_key = ? LIMIT 1`).bind(normalizedKey).first<{
+      id: string;
+      normalized_key: string;
+      destination_type: DestinationType;
+      canonical_url: string;
+      title: string;
+      description: string;
+      logo_key: string | null;
+      logo_content_type: string | null;
+      status: 'active' | 'suspended';
+      created_at: number;
+    }>();
+}
+
+export async function getListingTotal(normalizedKey: string, stateCode: StateCode) {
+  await ensureDatabase();
+  const row = await env.DB.prepare(`SELECT CAST(MAX(COALESCE(SUM(p.amount_cents - p.reversed_cents), 0), 0) AS TEXT) AS total_cents
+    FROM bid_payments p JOIN listings l ON l.id = p.listing_id
+    WHERE l.normalized_key = ? AND p.state_code = ?`).bind(normalizedKey, stateCode).first<{ total_cents: string }>();
+  return BigInt(row?.total_cents ?? '0');
+}
+
+export async function getStateLeaderTotal(stateCode: StateCode) {
+  await ensureDatabase();
+  const row = await env.DB.prepare(`SELECT CAST(MAX(COALESCE(MAX(total_cents), 0), 0) AS TEXT) AS leader_cents FROM (
+      SELECT p.listing_id, SUM(p.amount_cents - p.reversed_cents) AS total_cents
+      FROM bid_payments p JOIN listings l ON l.id = p.listing_id AND l.status = 'active'
+      WHERE p.state_code = ? GROUP BY p.listing_id
+    )`).bind(stateCode).first<{ leader_cents: string }>();
+  return BigInt(row?.leader_cents ?? '0');
+}
+
+export async function getStateWinner(stateCode: StateCode) {
+  await ensureDatabase();
+  const row = await env.DB.prepare(`${TOTALS_CTE}
+    SELECT r.state_code, r.listing_id, l.normalized_key, l.destination_type,
+      l.canonical_url, l.title, l.description, l.logo_key,
+      CAST(r.total_cents AS TEXT) AS total_cents, '0' AS daily_cents,
+      r.reached_at, 0 AS clicks
+    FROM ranked r JOIN listings l ON l.id = r.listing_id
+    WHERE r.state_code = ? AND r.state_rank = 1 LIMIT 1`).bind(stateCode).first<PositionRow>();
+  return row ? positionFromRow(row) : null;
+}
+
+export async function getCheckoutResult(sessionId: string) {
+  await ensureDatabase();
+  return env.DB.prepare(`SELECT a.id AS attempt_id, a.state_code, a.target_total_cents,
+      a.charge_cents, a.status, a.normalized_key, l.id AS listing_id, l.title,
+      l.destination_type, l.canonical_url, l.description, l.logo_key,
+      CAST(COALESCE((SELECT SUM(p.amount_cents - p.reversed_cents)
+        FROM bid_payments p WHERE p.listing_id = l.id AND p.state_code = a.state_code), 0) AS TEXT) AS listing_total_cents
+    FROM bid_attempts a
+    LEFT JOIN listings l ON l.normalized_key = a.normalized_key
+    WHERE a.stripe_session_id = ? LIMIT 1`).bind(sessionId).first<{
+      attempt_id: string;
+      state_code: StateCode;
+      target_total_cents: number;
+      charge_cents: number;
+      status: string;
+      normalized_key: string;
+      listing_id: string | null;
+      title: string | null;
+      destination_type: DestinationType;
+      canonical_url: string | null;
+      description: string | null;
+      logo_key: string | null;
+      listing_total_cents: string;
+    }>();
+}
+
+function listingFromRow(row: PositionRow): PublicListing {
+  return {
+    id: row.listing_id,
+    normalizedKey: row.normalized_key,
+    destinationType: row.destination_type,
+    canonicalUrl: row.canonical_url,
+    title: row.title,
+    description: row.description,
+    logoUrl: row.logo_key ? `/assets/${row.logo_key}` : null,
+  };
+}
+
+function positionFromRow(row: PositionRow): StatePosition {
+  const state = STATE_BY_CODE.get(row.state_code)!;
+  const total = BigInt(String(row.total_cents));
+  return {
+    stateCode: row.state_code,
+    stateName: state.name,
+    listing: listingFromRow(row),
+    totalCents: total.toString(),
+    dailyCents: String(row.daily_cents ?? 0),
+    clicks: Number(row.clicks ?? 0),
+    takeoverCents: (total + 100n).toString(),
+    reachedAt: row.reached_at,
+  };
+}
