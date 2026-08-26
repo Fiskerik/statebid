@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import Link from 'next/link';
 import { ensureDatabase } from '@/db/runtime';
 import { chatGPTSignOutPath } from '@/app/chatgpt-auth';
 import { requireAdminPage } from '@/lib/server/admin';
@@ -36,7 +37,7 @@ export default async function AdminPage() {
   return (
     <main className="legal-shell admin-shell">
       <header className="legal-header">
-        <a className="wordmark" href="/"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></a>
+        <Link className="wordmark" href="/"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></Link>
         <div className="admin-identity"><span>{user.displayName}</span><a href={chatGPTSignOutPath('/admin')}>Sign out</a></div>
       </header>
       <section className="legal-hero"><span className="eyebrow"><span /> Operator only</span><h1>Trust &amp; payments</h1><p>Review verified payments, reports, moderation state, and webhook health.</p></section>

@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { ensureDatabase } from '@/db/runtime';
-import { STATE_BY_CODE, type StateCode } from '@/lib/states';
+import { maybeCleanupOperationalData } from '@/lib/server/cleanup';
+import { STATE_BY_CODE, US_STATES, type StateCode } from '@/lib/states';
+import { ROLLING_DAY_MS } from '@/lib/rolling';
 import type {
   ActivityItem,
   BoardSnapshot,
@@ -45,7 +47,8 @@ const TOTALS_CTE = `
 
 export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot> {
   await ensureDatabase();
-  const cutoff = now - 24 * 60 * 60 * 1000;
+  await maybeCleanupOperationalData(now).catch(() => undefined);
+  const cutoff = now - ROLLING_DAY_MS;
   const [positionsResult, dailyResult, activityResult, volumeRow, dailyVolumeRow] = await Promise.all([
     env.DB.prepare(`${TOTALS_CTE},
       daily AS (
@@ -54,8 +57,8 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
         WHERE paid_at >= ?
         GROUP BY state_code, listing_id
       ), clicks AS (
-        SELECT state_code, listing_id, COUNT(*) AS clicks
-        FROM click_events
+        SELECT state_code, listing_id, SUM(count) AS clicks
+        FROM click_daily
         GROUP BY state_code, listing_id
       )
       SELECT r.state_code, r.listing_id, l.normalized_key, l.destination_type,
@@ -106,6 +109,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
   ]);
 
   const positions = positionsResult.results.map(positionFromRow);
+  const positionByCode = new Map(positions.map((position) => [position.stateCode, position]));
   const dailyLeaders: DailyLeader[] = dailyResult.results.flatMap((row) => {
     const state = STATE_BY_CODE.get(row.state_code);
     if (!state) return [];
@@ -135,6 +139,10 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
     generatedAt: now,
     checkoutEnabled: Boolean(env.STRIPE_SECRET_KEY && env.SITE_URL),
     turnstileSiteKey: env.TURNSTILE_SITE_KEY ?? null,
+    states: US_STATES.map((state) => {
+      const winner = positionByCode.get(state.code) ?? null;
+      return { stateCode: state.code, stateName: state.name, winner, takeoverCents: winner?.takeoverCents ?? '100' };
+    }),
     positions,
     allTimeLeaders: positions,
     dailyLeaders,
@@ -186,13 +194,23 @@ export async function getStateLeaderTotal(stateCode: StateCode) {
 
 export async function getStateWinner(stateCode: StateCode) {
   await ensureDatabase();
-  const row = await env.DB.prepare(`${TOTALS_CTE}
+  const cutoff = Date.now() - ROLLING_DAY_MS;
+  const row = await env.DB.prepare(`${TOTALS_CTE},
+    daily AS (
+      SELECT state_code, listing_id, SUM(amount_cents - reversed_cents) AS daily_cents
+      FROM bid_payments WHERE paid_at >= ? GROUP BY state_code, listing_id
+    ), clicks AS (
+      SELECT state_code, listing_id, SUM(count) AS clicks FROM click_daily GROUP BY state_code, listing_id
+    )
     SELECT r.state_code, r.listing_id, l.normalized_key, l.destination_type,
       l.canonical_url, l.title, l.description, l.logo_key,
-      CAST(r.total_cents AS TEXT) AS total_cents, '0' AS daily_cents,
-      r.reached_at, 0 AS clicks
+      CAST(r.total_cents AS TEXT) AS total_cents,
+      CAST(COALESCE(d.daily_cents, 0) AS TEXT) AS daily_cents,
+      r.reached_at, COALESCE(c.clicks, 0) AS clicks
     FROM ranked r JOIN listings l ON l.id = r.listing_id
-    WHERE r.state_code = ? AND r.state_rank = 1 LIMIT 1`).bind(stateCode).first<PositionRow>();
+    LEFT JOIN daily d ON d.state_code = r.state_code AND d.listing_id = r.listing_id
+    LEFT JOIN clicks c ON c.state_code = r.state_code AND c.listing_id = r.listing_id
+    WHERE r.state_code = ? AND r.state_rank = 1 LIMIT 1`).bind(cutoff, stateCode).first<PositionRow>();
   return row ? positionFromRow(row) : null;
 }
 

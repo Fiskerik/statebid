@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { ensureDatabase } from '@/db/runtime';
-import { assertAllowedHostname, isPrivateIpLiteral } from '@/lib/listings';
+import { assertAllowedHostname, isPrivateIpLiteral, isPrivateIpv6Literal } from '@/lib/listings';
 
 export class HttpError extends Error {
   constructor(
@@ -70,7 +70,7 @@ export async function assertNotBlocked(normalizedKey: string, hostname?: string)
 export async function assertPublicNetworkHost(hostname: string) {
   assertAllowedHostname(hostname);
   if (isIpLiteral(hostname)) {
-    if (isPrivateIpLiteral(hostname) || isPrivateIpv6(hostname)) throw new HttpError(400, 'Private network destinations are not allowed.');
+    if (isPrivateIpLiteral(hostname) || isPrivateIpv6Literal(hostname)) throw new HttpError(400, 'Private network destinations are not allowed.');
     return;
   }
 
@@ -86,18 +86,13 @@ export async function assertPublicNetworkHost(hostname: string) {
   }));
   const addresses = answers.flat();
   if (!addresses.length) throw new HttpError(400, 'The destination hostname could not be verified.');
-  if (addresses.some((address) => isPrivateIpLiteral(address) || isPrivateIpv6(address))) {
+  if (addresses.some((address) => isPrivateIpLiteral(address) || isPrivateIpv6Literal(address))) {
     throw new HttpError(400, 'Private network destinations are not allowed.');
   }
 }
 
 function isIpLiteral(hostname: string) {
   return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':');
-}
-
-function isPrivateIpv6(hostname: string) {
-  const value = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  return value === '::' || value === '::1' || value.startsWith('fe8') || value.startsWith('fe9') || value.startsWith('fea') || value.startsWith('feb') || value.startsWith('fc') || value.startsWith('fd');
 }
 
 export function jsonError(error: unknown) {

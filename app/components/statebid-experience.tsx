@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { geoAlbersUsa, geoPath } from 'd3-geo';
@@ -47,8 +48,8 @@ function Logo({ listing, small = false }: { listing: PublicListing; small?: bool
   </span>;
 }
 
-function MapLogo({ position, x, y, code }: { position: StatePosition | undefined; x: number; y: number; code: StateCode }) {
-  return <g className="map-logo" transform={`translate(${x} ${y})`} aria-hidden="true" filter="url(#logo-shadow)">
+function MapLogo({ position, x, y, code }: { position: StatePosition | undefined; x: number; y: number; code: string }) {
+  return <g className="map-logo" transform={`translate(${roundCoordinate(x)} ${roundCoordinate(y)})`} aria-hidden="true" filter="url(#logo-shadow)">
     <circle r="19" fill={position ? brandColor(position.listing.normalizedKey) : 'var(--map-empty-badge)'} />
     {position?.listing.logoUrl
       ? <image href={position.listing.logoUrl} x="-15" y="-15" width="30" height="30" preserveAspectRatio="xMidYMid slice" clipPath="url(#avatar-clip)" />
@@ -57,17 +58,27 @@ function MapLogo({ position, x, y, code }: { position: StatePosition | undefined
 }
 
 function MapSurface({ selected, positions, onSelect }: { selected: StateCode; positions: Map<StateCode, StatePosition>; onSelect: (code: StateCode) => void }) {
+  const hoverTimer = useRef<number | null>(null);
   const map = useMemo(() => {
     const collection = feature(atlas, atlas.objects.states) as unknown as FeatureCollection<Geometry, { name: string }>;
     const states = collection.features.filter((item) => STATE_BY_FIPS.has(String(item.id).padStart(2, '0')));
     const filtered: FeatureCollection<Geometry, { name: string }> = { type: 'FeatureCollection', features: states };
     const projection = geoAlbersUsa().fitExtent([[26, 24], [865, 586]], filtered);
-    return { states, path: geoPath(projection) };
+    return { states, path: geoPath(projection).digits(2) };
   }, []);
 
   const selectFromKeyboard = (event: KeyboardEvent<SVGGElement>, code: StateCode) => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(code); }
   };
+  const scheduleHover = (code: StateCode) => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => onSelect(code), 160);
+  };
+  const cancelHover = () => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+  };
+  useEffect(() => cancelHover, []);
 
   return <svg className="state-map" viewBox="0 0 1000 610" role="group" aria-label="Interactive map of the 50 United States">
     <defs>
@@ -83,7 +94,7 @@ function MapSurface({ selected, positions, onSelect }: { selected: StateCode; po
         className={`state-shape ${position ? 'is-claimed' : ''} ${selected === state.code ? 'is-selected' : ''}`}
         tabIndex={callout ? -1 : 0} role={callout ? undefined : 'button'} aria-hidden={callout ? true : undefined}
         aria-label={callout ? undefined : `${state.name}. ${position ? `${position.listing.title} leads at ${formatMoney(position.totalCents)}.` : 'Unclaimed. Claim for one dollar.'}`}
-        onClick={() => onSelect(state.code)} onMouseEnter={() => onSelect(state.code)} onFocus={() => onSelect(state.code)}
+        onClick={() => onSelect(state.code)} onMouseEnter={() => scheduleHover(state.code)} onMouseLeave={cancelHover} onFocus={() => onSelect(state.code)}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(state.code); } }} />;
     })}
     {map.states.map((item) => {
@@ -105,9 +116,9 @@ function MapSurface({ selected, positions, onSelect }: { selected: StateCode; po
       return <g key={`callout-${state.code}`} className={`state-callout ${selected === state.code ? 'is-selected' : ''}`}
         role="button" tabIndex={0}
         aria-label={`${state.name}. ${position ? `${position.listing.title} leads at ${formatMoney(position.totalCents)}.` : 'Unclaimed. Claim for one dollar.'}`}
-        onClick={() => onSelect(state.code)} onMouseEnter={() => onSelect(state.code)} onFocus={() => onSelect(state.code)} onKeyDown={(event) => selectFromKeyboard(event, state.code)}>
-        <path d={`M ${originX} ${originY} L ${x - 28} ${y}`} />
-        <MapLogo position={position} x={x} y={y} code={state.code} />
+        onClick={() => onSelect(state.code)} onMouseEnter={() => scheduleHover(state.code)} onMouseLeave={cancelHover} onFocus={() => onSelect(state.code)} onKeyDown={(event) => selectFromKeyboard(event, state.code)}>
+        <path d={`M ${roundCoordinate(originX)} ${roundCoordinate(originY)} L ${x - 28} ${y}`} />
+        <MapLogo position={position} x={x} y={y} code={position ? state.code : ''} />
         <text className="callout-code" x={x + 27} y={y + 4}>{state.code}</text>
       </g>;
     })}
@@ -135,11 +146,15 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requested = params.get('state')?.toUpperCase() as StateCode | undefined;
-    if (requested && STATE_BY_CODE.has(requested)) setSelected(requested);
-    if (params.get('checkout') === 'cancelled') setNotice('Checkout was cancelled. No bid was recorded.');
     const stored = window.localStorage.getItem('statebid-theme');
     const nextDark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setDark(nextDark); document.documentElement.dataset.theme = nextDark ? 'dark' : 'light';
+    document.documentElement.dataset.theme = nextDark ? 'dark' : 'light';
+    const frame = window.requestAnimationFrame(() => {
+      if (requested && STATE_BY_CODE.has(requested)) setSelected(requested);
+      if (params.get('checkout') === 'cancelled') setNotice('Checkout was cancelled. No bid was recorded.');
+      setDark(nextDark);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -204,7 +219,7 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
       <div className="map-column"><div className="map-toolbar"><div><span className="map-pulse" /> Live ownership map</div><span>Updated {relativeTime(snapshot.generatedAt)}</span></div>
         <div className="map-card"><div className="map-grid-bg" aria-hidden="true" /><MapSurface selected={selected} positions={positions} onSelect={setSelected} />
           <div className="state-detail-card" role="status" aria-live="polite"><div className="detail-topline"><span>{state.name}</span><span>{position ? 'Claimed' : 'Available'}</span></div>
-            {position ? <><div className="detail-owner"><Logo listing={position.listing} /><div><strong>{position.listing.title}</strong><small>{position.listing.normalizedKey.replace(/^\w+:/, '')}</small></div><span>{formatMoney(position.totalCents)}</span></div><div className="detail-metrics"><span><small>Last 24h</small>{formatMoney(position.dailyCents)}</span><span><small>Clicks</small>{position.clicks.toLocaleString()}</span></div><div className="detail-links"><a href={`/go/${selected}`} target="_blank" rel="sponsored nofollow noopener">Visit sponsor <ExternalLink size={13} /></a><a href={`/state/${selected.toLowerCase()}`}>Share page</a></div><button className="claim-button" type="button" onClick={openClaim}>Claim {state.code} for {formatMoney(position.takeoverCents)} <ArrowUpRight size={16} /></button></>
+            {position ? <><div className="detail-owner"><Logo listing={position.listing} /><div><strong>{position.listing.title}</strong><small>{position.listing.normalizedKey.replace(/^\w+:/, '')}</small></div><span>{formatMoney(position.totalCents)}</span></div><div className="detail-metrics"><span><small>Last 24h</small>{formatMoney(position.dailyCents)}</span><span><small>Clicks</small>{new Intl.NumberFormat('en-US').format(position.clicks)}</span></div><div className="detail-links"><a href={`/go/${selected}`} target="_blank" rel="sponsored nofollow noopener">Visit sponsor <ExternalLink size={13} /></a><a href={`/state/${selected.toLowerCase()}`}>Share page</a></div><button className="claim-button" type="button" onClick={openClaim}>Claim {state.code} for {formatMoney(position.takeoverCents)} <ArrowUpRight size={16} /></button></>
               : <><p className="available-copy">Put your logo on {state.name}. The first verified dollar takes it.</p><button className="claim-button" type="button" onClick={openClaim}>Claim {state.code} for $1 <ArrowUpRight size={16} /></button></>}
           </div>
         </div><div className="map-legend"><span><i className="legend-dot claimed" /> Claimed</span><span><i className="legend-dot available" /> Available</span><span>Hover, focus, or tap a state</span></div>
@@ -226,6 +241,8 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
   </main>;
 }
 
+function roundCoordinate(value: number) { return Math.round(value * 100) / 100; }
+
 function EmptyPanel({ title, copy }: { title: string; copy: string }) {
   return <div className="empty-panel"><span>01</span><strong>{title}</strong><p>{copy}</p></div>;
 }
@@ -241,7 +258,20 @@ function ClaimDialog({ stateCode, stateName, position, snapshot, onClose }: { st
   const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
   const [turnstileReset, setTurnstileReset] = useState(0);
   const firstInput = useRef<HTMLInputElement>(null);
-  useEffect(() => { firstInput.current?.focus(); }, []);
+  const dialog = useRef<HTMLElement>(null);
+  useEffect(() => {
+    firstInput.current?.focus();
+    const trapFocus = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Tab' || !dialog.current) return;
+      const controls = [...dialog.current.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')].filter((item) => item.offsetParent !== null);
+      if (!controls.length) return;
+      const first = controls[0]; const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', trapFocus);
+    return () => document.removeEventListener('keydown', trapFocus);
+  }, []);
   function resetChallenge() { setTurnstileToken(undefined); setTurnstileReset((value) => value + 1); }
 
   async function previewListing() {
@@ -281,7 +311,7 @@ function ClaimDialog({ stateCode, stateName, position, snapshot, onClose }: { st
     finally { setBusy(false); }
   }
 
-  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><section className="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" onMouseDown={(event) => event.stopPropagation()}>
+  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><section ref={dialog} className="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" aria-describedby="claim-note" onMouseDown={(event) => event.stopPropagation()}>
     <button className="modal-close" type="button" onClick={onClose} aria-label="Close"><X size={18} /></button><span className="modal-state">{stateName} · {position ? `${formatMoney(position.totalCents)} current leader` : 'Available now'}</span><h2 id="claim-title">Put your brand<br />on {stateName}.</h2>
     {!quote ? <><label>Website or X handle<input ref={firstInput} type="text" value={destination} onChange={(event) => { setDestination(event.target.value); setPreview(null); }} placeholder="yourbrand.com or @handle" autoComplete="url" /></label><label>Your new standing total<div className="money-input"><span>$</span><input type="text" inputMode="numeric" pattern="[0-9]*" value={targetDollars} onChange={(event) => setTargetDollars(event.target.value.replace(/\D/g, ''))} /></div></label><div className="quote-row"><span>Current public minimum</span><strong>{formatMoney(position?.takeoverCents ?? '100')}</strong></div>
       {preview ? <div className="listing-preview-card"><Logo listing={preview.listing} /><div><span>{preview.existing ? 'Locked listing' : 'First-time identity'}</span><strong>{preview.listing.title}</strong><small>{preview.listing.canonicalUrl}</small></div><Check size={18} />{!preview.existing ? <label className="upload-button"><Upload size={14} /> Replace with PNG, JPEG, or WebP<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadLogo(file); }} /></label> : null}</div> : null}
@@ -289,7 +319,7 @@ function ClaimDialog({ stateCode, stateName, position, snapshot, onClose }: { st
       {snapshot.turnstileSiteKey ? <TurnstileWidget key={turnstileReset} siteKey={snapshot.turnstileSiteKey} onToken={setTurnstileToken} /> : null}{error ? <p className="form-error" role="alert">{error}</p> : null}
       {!preview ? <button className="claim-button large" type="button" disabled={busy || !destination || Boolean(snapshot.turnstileSiteKey && !turnstileToken)} onClick={previewListing}>{busy ? <LoaderCircle className="spin" size={17} /> : null} Preview your listing <ArrowUpRight size={17} /></button> : <button className="claim-button large" type="button" disabled={busy || !terms || !snapshot.checkoutEnabled || Boolean(snapshot.turnstileSiteKey && !turnstileToken)} onClick={createCheckout}>{busy ? <LoaderCircle className="spin" size={17} /> : <ShieldCheck size={17} />} {snapshot.checkoutEnabled ? 'Get secure Checkout quote' : 'Stripe test mode setup required'}</button>}
     </> : <div className="checkout-quote-card"><span className="quote-ready"><Check size={15} /> Server-verified quote</span><div><span>New standing total</span><strong>{formatMoney(quote.targetTotalCents)}</strong></div><div><span>Existing standing credit</span><strong>− {formatMoney(quote.existingTotalCents)}</strong></div><div className="quote-charge"><span>Charged now</span><strong>{formatMoney(quote.chargeCents)}</strong></div><button className="claim-button large" type="button" onClick={() => window.location.assign(quote.checkoutUrl)}>Continue to Stripe <ArrowUpRight size={17} /></button><button className="text-button" type="button" onClick={() => setQuote(null)}>Change bid</button></div>}
-    <p className="modal-note">Only a signed, paid Stripe webhook changes the map. If the state moves during Checkout, your full payment still credits this listing.</p>
+    <p className="modal-note" id="claim-note">Only a signed, paid Stripe webhook changes the map. If the state moves during Checkout, your full payment still credits this listing.</p>
   </section></div>;
 }
 

@@ -19,6 +19,12 @@ const RESERVED_X_PATHS = new Set([
   'settings', 'compose', 'share', 'hashtag', 'tos', 'privacy',
 ]);
 
+const PROHIBITED_INDICATORS = new Set([
+  'porn', 'porno', 'pornography', 'xxx', 'escort', 'malware', 'phishing', 'phish',
+  'ransomware', 'counterfeit', 'casino', 'sportsbook', 'betting', 'firearms',
+  'weapons', 'cannabis', 'paydayloan', 'paydayloans',
+]);
+
 export type NormalizedDestination = {
   type: DestinationType;
   normalizedKey: string;
@@ -71,6 +77,7 @@ export function normalizeDestination(rawInput: string): NormalizedDestination {
   const pathname = normalizePathname(url.pathname);
   const authority = port ? `${hostname}:${port}` : hostname;
   const canonicalUrl = `https://${authority}${pathname}`;
+  assertNoProhibitedIndicators(canonicalUrl);
 
   return {
     type: 'website',
@@ -85,6 +92,7 @@ function normalizeXHandle(value: string): NormalizedDestination {
   if (!/^[a-z0-9_]{1,15}$/.test(handle) || RESERVED_X_PATHS.has(handle)) {
     throw new DestinationError('Enter a valid X profile handle.');
   }
+  assertNoProhibitedIndicators(handle);
   return {
     type: 'x',
     normalizedKey: `x:${handle}`,
@@ -111,11 +119,56 @@ export function assertAllowedHostname(hostname: string) {
     hostname.endsWith('.localhost') ||
     hostname.endsWith('.local') ||
     hostname.endsWith('.internal') ||
-    BLOCKED_HOSTS.has(hostname) ||
-    isPrivateIpLiteral(hostname)
+    [...BLOCKED_HOSTS].some((blocked) => hostname === blocked || hostname.endsWith(`.${blocked}`)) ||
+    isPrivateIpLiteral(hostname) ||
+    isPrivateIpv6Literal(hostname)
   ) {
     throw new DestinationError('That destination is not allowed.');
   }
+}
+
+export function assertNoProhibitedIndicators(value: string) {
+  let decoded = value;
+  try { decoded = decodeURIComponent(value); } catch { /* URL parsing will preserve malformed escapes as inert text. */ }
+  const tokens = decoded.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (tokens.some((token) => PROHIBITED_INDICATORS.has(token))) {
+    throw new DestinationError('That destination contains a prohibited or regulated-content indicator.');
+  }
+}
+
+export function isPrivateIpv6Literal(hostname: string) {
+  const value = hostname.replace(/^\[|\]$/g, '').split('%')[0].toLowerCase();
+  if (!value.includes(':')) return false;
+  const parts = expandIpv6(value);
+  if (!parts) return true;
+  const first = parts[0];
+  if (parts.every((part) => part === 0) || parts.slice(0, 7).every((part) => part === 0) && parts[7] === 1) return true;
+  if ((first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80 || (first & 0xffc0) === 0xfec0 || (first & 0xff00) === 0xff00) return true;
+  if (first === 0x2001 && (parts[1] === 0x0db8 || parts[1] === 0 || (parts[1] & 0xfff0) === 0x0010)) return true;
+  if (first === 0x2002 || (first === 0x0064 && parts[1] === 0xff9b)) return true;
+  if (parts.slice(0, 5).every((part) => part === 0) && (parts[5] === 0 || parts[5] === 0xffff)) {
+    const address = `${parts[6] >> 8}.${parts[6] & 255}.${parts[7] >> 8}.${parts[7] & 255}`;
+    return isPrivateIpLiteral(address);
+  }
+  return false;
+}
+
+function expandIpv6(value: string) {
+  if ((value.match(/::/g) ?? []).length > 1) return null;
+  const [leftRaw, rightRaw = ''] = value.split('::');
+  const parseSide = (side: string) => side ? side.split(':').filter(Boolean).flatMap((part) => {
+    if (part.includes('.')) {
+      const octets = part.split('.').map(Number);
+      if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return [Number.NaN];
+      return [(octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3]];
+    }
+    return /^[0-9a-f]{1,4}$/.test(part) ? [Number.parseInt(part, 16)] : [Number.NaN];
+  }) : [];
+  const left = parseSide(leftRaw); const right = parseSide(rightRaw);
+  if ([...left, ...right].some(Number.isNaN)) return null;
+  const missing = 8 - left.length - right.length;
+  if (missing < 0 || (!value.includes('::') && missing !== 0)) return null;
+  return [...left, ...Array.from({ length: missing }, () => 0), ...right];
 }
 
 export function isPrivateIpLiteral(hostname: string) {
@@ -131,6 +184,9 @@ export function isPrivateIpLiteral(hostname: string) {
     (parts[0] === 169 && parts[1] === 254) ||
     (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
     (parts[0] === 192 && parts[1] === 168) ||
+    (parts[0] === 192 && parts[1] === 0) ||
+    (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19 || parts[1] === 51)) ||
+    (parts[0] === 203 && parts[1] === 0 && parts[2] === 113) ||
     (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
     parts[0] >= 224
   );

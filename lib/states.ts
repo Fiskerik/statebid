@@ -53,10 +53,10 @@ export const US_STATES = [
 
 export type StateCode = (typeof US_STATES)[number]['code'];
 
-export const STATE_BY_FIPS = new Map(
+export const STATE_BY_FIPS: ReadonlyMap<string, (typeof US_STATES)[number]> = new Map(
   US_STATES.map((state) => [state.fips, state]),
 );
 
-export const STATE_BY_CODE = new Map(
+export const STATE_BY_CODE: ReadonlyMap<StateCode, (typeof US_STATES)[number]> = new Map(
   US_STATES.map((state) => [state.code, state]),
 );

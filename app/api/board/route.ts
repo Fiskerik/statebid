@@ -1,7 +1,7 @@
 import { getBoardSnapshot } from '@/lib/server/board';
 
 export async function GET(request: Request) {
-  const snapshot = await getBoardSnapshot();
+  const snapshot = await getBoardSnapshot(Math.floor(Date.now() / 5000) * 5000);
   const body = JSON.stringify(snapshot);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
   const etag = `"${[...new Uint8Array(digest)].slice(0, 12).map((part) => part.toString(16).padStart(2, '0')).join('')}"`;

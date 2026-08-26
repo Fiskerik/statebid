@@ -42,10 +42,18 @@ export type ActivityItem = {
   paidAt: number;
 };
 
+export type BoardState = {
+  stateCode: StateCode;
+  stateName: string;
+  winner: StatePosition | null;
+  takeoverCents: MoneyCents;
+};
+
 export type BoardSnapshot = {
   generatedAt: number;
   checkoutEnabled: boolean;
   turnstileSiteKey: string | null;
+  states: BoardState[];
   positions: StatePosition[];
   allTimeLeaders: StatePosition[];
   dailyLeaders: DailyLeader[];

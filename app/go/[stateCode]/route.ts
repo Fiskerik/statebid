@@ -17,11 +17,18 @@ export async function GET(request: Request, context: { params: Promise<{ stateCo
   const day = new Date().toISOString().slice(0, 10);
   const visitorHash = await hashValue(`${env.RATE_LIMIT_SALT ?? 'statebid-local'}:${visitorId}:${winner.listing.id}:${stateCode}:${day}`);
   await ensureDatabase();
-  await env.DB.prepare(`INSERT OR IGNORE INTO click_events(
+  const click = await env.DB.prepare(`INSERT OR IGNORE INTO click_events(
       id, listing_id, state_code, visitor_hash, day, created_at
     ) VALUES (?, ?, ?, ?, ?, ?)`)
     .bind(crypto.randomUUID(), winner.listing.id, stateCode, visitorHash, day, Date.now()).run()
     .catch((error) => console.warn('StateBid click count failed', { stateCode, error }));
+  if (click && click.meta.changes > 0) {
+    await env.DB.prepare(`INSERT INTO click_daily(listing_id, state_code, day, count)
+        VALUES (?, ?, ?, 1)
+        ON CONFLICT(listing_id, state_code, day) DO UPDATE SET count = count + 1`)
+      .bind(winner.listing.id, stateCode, day).run()
+      .catch((error) => console.warn('StateBid click aggregate failed', { stateCode, error }));
+  }
 
   const headers = new Headers({
     location: winner.listing.canonicalUrl,

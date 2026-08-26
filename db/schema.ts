@@ -143,6 +143,20 @@ export const clickEvents = sqliteTable(
   ],
 );
 
+export const clickDaily = sqliteTable(
+  'click_daily',
+  {
+    listingId: text('listing_id').notNull().references(() => listings.id),
+    stateCode: text('state_code').notNull(),
+    day: text('day').notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('idx_click_daily_unique').on(table.listingId, table.stateCode, table.day),
+    index('idx_click_daily_listing_state').on(table.listingId, table.stateCode),
+  ],
+);
+
 export const moderationEvents = sqliteTable(
   'moderation_events',
   {

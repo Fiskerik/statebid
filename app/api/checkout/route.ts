@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     });
     const attemptId = crypto.randomUUID();
     const now = Date.now();
-    const expiresAt = now + 30 * 60 * 1000;
+    const expiresAt = now + 31 * 60 * 1000;
     await env.DB.prepare(`INSERT INTO bid_attempts(
         id, normalized_key, destination_type, canonical_url, provisional_title,
         provisional_description, provisional_logo_key, provisional_logo_content_type,

@@ -98,6 +98,14 @@ const SCHEMA_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_click_events_daily_unique ON click_events(listing_id, state_code, visitor_hash, day)`,
   `CREATE INDEX IF NOT EXISTS idx_click_events_listing_state ON click_events(listing_id, state_code)`,
   `CREATE INDEX IF NOT EXISTS idx_click_events_created ON click_events(created_at)`,
+  `CREATE TABLE IF NOT EXISTS click_daily (
+    listing_id TEXT NOT NULL REFERENCES listings(id),
+    state_code TEXT NOT NULL,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_click_daily_unique ON click_daily(listing_id, state_code, day)`,
+  `CREATE INDEX IF NOT EXISTS idx_click_daily_listing_state ON click_daily(listing_id, state_code)`,
   `CREATE TABLE IF NOT EXISTS moderation_events (
     id TEXT PRIMARY KEY NOT NULL,
     listing_id TEXT NOT NULL REFERENCES listings(id),

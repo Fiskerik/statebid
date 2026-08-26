@@ -141,8 +141,9 @@ async function fulfillCheckout(stripe: Stripe, event: Stripe.Event, session: Str
         paidAt,
         attempt.normalized_key,
       ),
-    env.DB.prepare(`UPDATE bid_attempts SET status = 'paid' WHERE id = ? AND stripe_session_id = ?`)
-      .bind(attempt.id, session.id),
+    env.DB.prepare(`UPDATE bid_attempts SET status = 'paid' WHERE id = ? AND stripe_session_id = ?
+      AND EXISTS (SELECT 1 FROM bid_payments WHERE stripe_session_id = ?)`)
+      .bind(attempt.id, session.id, session.id),
   ]);
 
   const credited = await env.DB.prepare(`SELECT p.id, p.amount_cents, l.logo_key
@@ -185,9 +186,11 @@ async function applyReversal(
         id, stripe_event_id, payment_id, adjustment_cents, reason, created_at
       ) VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(crypto.randomUUID(), event.id, payment.id, adjustment, reason, event.created * 1000),
-    env.DB.prepare(`UPDATE bid_payments SET reversed_cents = ?, reversed_at = ?, stripe_charge_id = COALESCE(stripe_charge_id, ?)
+    env.DB.prepare(`UPDATE bid_payments SET reversed_cents = ?,
+        reversed_at = CASE WHEN ? = 0 THEN reversed_at ELSE ? END,
+        stripe_charge_id = COALESCE(stripe_charge_id, ?)
       WHERE id = ? AND NOT EXISTS (
         SELECT 1 FROM payment_reversals WHERE stripe_event_id = ? AND adjustment_cents != ?
-      )`).bind(desired, adjustment === 0 ? null : event.created * 1000, charge.id, payment.id, event.id, adjustment),
+      )`).bind(desired, adjustment, event.created * 1000, charge.id, payment.id, event.id, adjustment),
   ]);
 }

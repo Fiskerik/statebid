@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { ensureDatabase } from '@/db/runtime';
-import { enforceRateLimit, HttpError, jsonError, verifyTurnstile } from '@/lib/server/security';
+import { enforceRateLimit, HttpError, jsonError } from '@/lib/server/security';
 import { STATE_BY_CODE } from '@/lib/states';
 
 const schema = z.object({
@@ -16,7 +16,6 @@ export async function POST(request: Request) {
   try {
     await enforceRateLimit(request, 'report', 4, 60 * 60);
     const input = schema.parse(await request.json());
-    await verifyTurnstile(input.turnstileToken, request);
     const stateCode = input.stateCode.toUpperCase();
     if (!STATE_BY_CODE.has(stateCode as never)) throw new HttpError(400, 'Invalid state.');
     await ensureDatabase();

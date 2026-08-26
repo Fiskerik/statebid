@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { ensureDatabase } from '@/db/runtime';
-import { normalizeDestination } from '@/lib/listings';
+import { assertNoProhibitedIndicators, normalizeDestination } from '@/lib/listings';
 import { getListingByKey } from '@/lib/server/board';
 import { cleanupExpiredPreviews } from '@/lib/server/cleanup';
 import { cacheRemoteLogo, discoverMetadata } from '@/lib/server/metadata';
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       if (destination.type !== 'x') throw error;
       return { title: destination.fallbackTitle, description: 'X profile', logoUrl: null };
     });
+    assertNoProhibitedIndicators(`${metadata.title} ${metadata.description}`);
     const previewId = crypto.randomUUID();
     let logoKey: string | null = null;
     let logoContentType: string | null = null;
