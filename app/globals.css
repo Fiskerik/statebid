@@ -122,6 +122,9 @@ button { color: inherit; }
 .detail-topline { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .09em; font-weight: 750; margin-bottom: 14px; }
 .detail-topline span:last-child { color: #6fbe82; }
 .detail-owner { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 9px; }
+.detail-owner-link { color: inherit; text-decoration: none; border-radius: 8px; padding: 4px; margin: -4px; transition: background .15s ease; }
+.detail-owner-link:hover, .detail-owner-link:focus-visible { background: var(--soft); outline: none; }
+.detail-owner-link > svg { color: var(--muted); }
 .detail-owner > div { display: grid; gap: 2px; min-width: 0; }
 .detail-owner strong { font-size: 13px; }
 .detail-owner small { color: var(--muted); font-size: 9px; overflow: hidden; text-overflow: ellipsis; }
