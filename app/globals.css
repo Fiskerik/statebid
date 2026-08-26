@@ -53,6 +53,7 @@ button { color: inherit; }
 .topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .live-pill { border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 .live-pill svg { color: #66d98a; fill: #66d98a; }
+.visitor-pill { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .icon-button { width: 34px; height: 34px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
 .primary-button, .claim-button { border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 760; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; }
 .primary-button.compact { padding: 10px 14px; font-size: 12px; }
@@ -331,7 +332,7 @@ footer nav { display: flex; justify-content: flex-end; gap: 20px; }
 
 @media (max-width: 760px) {
   .topbar { grid-template-columns: 1fr auto; height: 60px; }
-  .nav-links, .live-pill, .primary-button.compact { display: none; }
+  .nav-links, .live-pill, .visitor-pill, .primary-button.compact { display: none; }
   .intro-banner { padding-top: 18px; padding-bottom: 18px; gap: 18px; }
   .intro-banner h1 { font-size: clamp(34px, 11vw, 52px); margin-bottom: 8px; }
   .hero-stats { grid-template-columns: 1fr 1fr; }

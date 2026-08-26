@@ -157,6 +157,16 @@ export const clickDaily = sqliteTable(
   ],
 );
 
+export const siteVisitors = sqliteTable(
+  'site_visitors',
+  {
+    visitorHash: text('visitor_hash').primaryKey(),
+    firstSeenAt: integer('first_seen_at').notNull(),
+    lastSeenAt: integer('last_seen_at').notNull(),
+  },
+  (table) => [index('idx_site_visitors_last_seen').on(table.lastSeenAt)],
+);
+
 export const moderationEvents = sqliteTable(
   'moderation_events',
   {

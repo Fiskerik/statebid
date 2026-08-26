@@ -66,6 +66,7 @@ export type BoardSnapshot = {
     verifiedVolumeCents: MoneyCents;
     dailyVolumeCents: MoneyCents;
     claimedStates: number;
+    visitors: number;
   };
 };
 

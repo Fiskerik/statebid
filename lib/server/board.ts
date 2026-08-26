@@ -54,7 +54,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
   await ensureDatabase();
   await maybeCleanupOperationalData(now).catch(() => undefined);
   const cutoff = now - ROLLING_DAY_MS;
-  const [positionsResult, bidderResult, dailyResult, activityResult, volumeRow, dailyVolumeRow] = await Promise.all([
+  const [positionsResult, bidderResult, dailyResult, activityResult, volumeRow, dailyVolumeRow, visitorRow] = await Promise.all([
     env.DB.prepare(`${TOTALS_CTE},
       daily AS (
         SELECT state_code, listing_id, SUM(amount_cents - reversed_cents) AS daily_cents
@@ -141,6 +141,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
       FROM bid_payments`).first<{ volume_cents: string }>(),
     env.DB.prepare(`SELECT CAST(COALESCE(SUM(amount_cents - reversed_cents), 0) AS TEXT) AS volume_cents
       FROM bid_payments WHERE paid_at >= ?`).bind(cutoff).first<{ volume_cents: string }>(),
+    env.DB.prepare('SELECT COUNT(*) AS visitors FROM site_visitors').first<{ visitors: number | string }>(),
   ]);
 
   const positions = positionsResult.results.map(positionFromRow);
@@ -192,6 +193,7 @@ export async function getBoardSnapshot(now = Date.now()): Promise<BoardSnapshot>
       verifiedVolumeCents: volumeRow?.volume_cents ?? '0',
       dailyVolumeCents: dailyVolumeRow?.volume_cents ?? '0',
       claimedStates: positions.length,
+      visitors: Number(visitorRow?.visitors ?? 0),
     },
   };
   return withDemoData(snapshot, now);
@@ -313,6 +315,7 @@ function emptyBoardSnapshot(now: number): BoardSnapshot {
       verifiedVolumeCents: '0',
       dailyVolumeCents: '0',
       claimedStates: 0,
+      visitors: 0,
     },
   };
 }
@@ -385,7 +388,7 @@ function withDemoData(snapshot: BoardSnapshot, now: number): BoardSnapshot {
     allTimeLeaders: positions,
     dailyLeaders,
     activity,
-    stats: { mapValueCents: '200', verifiedVolumeCents: '200', dailyVolumeCents: '200', claimedStates: 2 },
+    stats: { mapValueCents: '200', verifiedVolumeCents: '200', dailyVolumeCents: '200', claimedStates: 2, visitors: snapshot.stats.visitors },
   };
 }
 

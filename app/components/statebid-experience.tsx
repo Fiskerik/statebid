@@ -7,7 +7,7 @@ import type { FeatureCollection, Geometry } from 'geojson';
 import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 import statesAtlas from 'us-atlas/states-10m.json';
-import { ArrowUpRight, Check, ChevronRight, CircleDollarSign, ExternalLink, LoaderCircle, Moon, Radio, ShieldCheck, Sun, Trophy, Upload, X } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronRight, CircleDollarSign, ExternalLink, LoaderCircle, Moon, Radio, ShieldCheck, Sun, Trophy, Upload, Users, X } from 'lucide-react';
 import { STATE_BY_CODE, STATE_BY_FIPS, type StateCode } from '@/lib/states';
 import type { BoardSnapshot, CheckoutQuote, ListingPreview, PublicListing, StatePosition } from '@/lib/types';
 import { DEFAULT_STATE_BORDER, lighterColor } from '@/lib/colors';
@@ -170,6 +170,13 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
   }, [refresh]);
 
   useEffect(() => {
+    fetch('/api/visit', { method: 'POST', keepalive: true })
+      .then((response) => response.ok ? response.json() as Promise<{ visitors: number }> : null)
+      .then((result) => { if (result) setSnapshot((current) => ({ ...current, stats: { ...current.stats, visitors: result.visitors } })); })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     if (!claimOpen) return;
     const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') closeClaim(); };
     document.addEventListener('keydown', closeOnEscape);
@@ -200,7 +207,7 @@ export function StateBidExperience({ initialSnapshot }: { initialSnapshot: Board
     <header className="topbar">
       <a className="wordmark" href="#top" aria-label="StateBid home"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></a>
       <nav className="nav-links" aria-label="Main navigation"><a href="#map">Map</a><a href="#how-it-works">How it works</a><a href="/rules">Rules</a></nav>
-      <div className="topbar-actions"><span className="live-pill"><Radio size={13} /> Live</span>
+      <div className="topbar-actions"><span className="live-pill"><Radio size={13} /> Live</span><span className="visitor-pill" title="Lifetime unique visitors"><Users size={13} /> {snapshot.stats.visitors.toLocaleString()} visitors</span>
         <button className="icon-button" type="button" onClick={toggleTheme} aria-label={`Switch to ${dark ? 'light' : 'dark'} theme`}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
         <button className="primary-button compact" type="button" onClick={openClaim}>Claim a state <ArrowUpRight size={15} /></button>
       </div>
