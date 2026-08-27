@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   try {
     if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const session = event.data.object as Stripe.Checkout.Session;
-      if (session.payment_status === 'paid') await fulfillCheckout(stripe, event, session);
+      if (session.payment_status === 'paid' || session.payment_status === 'no_payment_required') await fulfillCheckout(stripe, event, session);
     } else if (event.type === 'checkout.session.async_payment_failed' || event.type === 'checkout.session.expired') {
       const session = event.data.object as Stripe.Checkout.Session;
       const attemptId = session.metadata?.attemptId;
@@ -103,11 +103,15 @@ async function fulfillCheckout(stripe: Stripe, event: Stripe.Event, session: Str
   const paymentIntentId = typeof session.payment_intent === 'string'
     ? session.payment_intent
     : session.payment_intent?.id ?? null;
-  if (!paymentIntentId) throw new Error('Paid Checkout has no PaymentIntent.');
+  if (!paymentIntentId && session.amount_total !== 0) throw new Error('Paid Checkout has no PaymentIntent.');
   let chargeId: string | null = null;
   try {
+    if (!paymentIntentId) {
+      chargeId = null;
+    } else {
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
     chargeId = typeof intent.latest_charge === 'string' ? intent.latest_charge : intent.latest_charge?.id ?? null;
+    }
   } catch (error) {
     console.warn('StateBid could not expand the Stripe charge ID', { paymentIntentId, error });
   }
