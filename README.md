@@ -7,6 +7,7 @@ StateBid is a map-led paid-placement marketplace for the 50 US states. Each veri
 - TypeScript, React, and native Next.js App Router on Vercel
 - Turso/libSQL for the immutable payment ledger and derived rankings
 - Vercel Blob for cached listing logos
+- Vercel Web Analytics for aggregate page-view reporting
 - Stripe-hosted Checkout for ordinary USD payments (no Connect)
 - Signed, server-only operator sessions for the `/admin` route
 - Public-domain Census-derived state geometry through `us-atlas`

@@ -30,6 +30,7 @@
 - Create a private Vercel Blob store and verify `BLOB_READ_WRITE_TOKEN` is injected into new deployments.
 - Configure long, unique `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_SESSION_SECRET` values. Confirm `/admin` rejects an absent or invalid signed session.
 - Configure a random `RATE_LIMIT_SALT` and Cloudflare Turnstile keys.
+- Confirm Vercel Web Analytics is receiving page views after the first production visit; document the analytics processor and retention behavior in the final Privacy Notice.
 - Review destination/content blocklists, abuse thresholds, Blob retention behavior, and `/admin` moderation fallbacks.
 - Assets should be served through `/assets/*` with immutable caching, `nosniff`, and restrictive CSP headers.
 
