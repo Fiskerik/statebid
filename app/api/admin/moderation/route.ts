@@ -16,8 +16,8 @@ export async function POST(request: Request) {
   const reason = String(form.get('reason') ?? '').slice(0, 500) || 'Operator review';
   if (!/^[0-9a-f-]{36}$/i.test(listingId)) return Response.json({ error: 'Invalid listing.' }, { status: 400 });
   await ensureDatabase();
-  const listing = await env.DB.prepare('SELECT id, normalized_key FROM listings WHERE id = ? LIMIT 1')
-    .bind(listingId).first<{ id: string; normalized_key: string }>();
+  const listing = await env.DB.prepare('SELECT id, normalized_key, logo_key FROM listings WHERE id = ? LIMIT 1')
+    .bind(listingId).first<{ id: string; normalized_key: string; logo_key: string | null }>();
   if (!listing) return Response.json({ error: 'Listing not found.' }, { status: 404 });
 
   if (action === 'suspend' || action === 'reactivate') {
@@ -42,6 +42,21 @@ export async function POST(request: Request) {
     const reportId = String(form.get('reportId') ?? '');
     await env.DB.prepare(`UPDATE content_reports SET status = 'resolved', resolved_at = ? WHERE id = ? AND listing_id = ?`)
       .bind(Date.now(), reportId, listingId).run();
+  } else if (action === 'edit') {
+    const title = String(form.get('title') ?? '').trim().slice(0, 120);
+    const description = String(form.get('description') ?? '').trim().slice(0, 280);
+    const removeLogo = form.get('removeLogo') === 'on';
+    if (!title) return Response.json({ error: 'A public title is required.' }, { status: 400 });
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE listings SET title = ?, description = ?,
+          logo_key = CASE WHEN ? = 1 THEN NULL ELSE logo_key END,
+          logo_content_type = CASE WHEN ? = 1 THEN NULL ELSE logo_content_type END
+        WHERE id = ?`).bind(title, description, removeLogo ? 1 : 0, removeLogo ? 1 : 0, listingId),
+      env.DB.prepare(`INSERT INTO moderation_events(id, listing_id, admin_user_id, action, reason, created_at)
+        VALUES (?, ?, ?, 'edit', ?, ?)`)
+        .bind(crypto.randomUUID(), listingId, auth.user.userId, removeLogo ? 'Operator edited copy and removed logo' : 'Operator edited public copy', Date.now()),
+    ]);
+    if (removeLogo && listing.logo_key) await env.FILES.delete(listing.logo_key).catch(() => undefined);
   } else {
     return Response.json({ error: 'Unknown moderation action.' }, { status: 400 });
   }

@@ -12,11 +12,11 @@ export default async function AdminPage() {
   }
   await ensureDatabase();
   const [listings, payments, reports, webhooks] = await Promise.all([
-    env.DB.prepare(`SELECT l.id, l.title, l.normalized_key, l.status, l.created_at,
+    env.DB.prepare(`SELECT l.id, l.title, l.description, l.normalized_key, l.canonical_url, l.status, l.created_at,
         CAST(COALESCE(SUM(p.amount_cents - p.reversed_cents), 0) AS TEXT) AS total_cents
       FROM listings l LEFT JOIN bid_payments p ON p.listing_id = l.id
       GROUP BY l.id ORDER BY l.created_at DESC LIMIT 100`).all<{
-        id: string; title: string; normalized_key: string; status: string; created_at: number; total_cents: string;
+        id: string; title: string; description: string; normalized_key: string; canonical_url: string; status: string; created_at: number; total_cents: string;
       }>(),
     env.DB.prepare(`SELECT p.id, p.stripe_session_id, p.stripe_payment_intent_id, p.state_code,
         p.amount_cents, p.reversed_cents, p.paid_at, l.title
@@ -46,8 +46,9 @@ export default async function AdminPage() {
 
       <section className="admin-grid">
         <article className="admin-card"><h2>Listings</h2><div className="admin-table-wrap"><table><thead><tr><th>Listing</th><th>Standing</th><th>Status</th><th>Action</th></tr></thead><tbody>
-          {listings.results.map((listing) => <tr key={listing.id}><td><strong>{listing.title}</strong><small>{listing.normalized_key}</small></td><td>{money(listing.total_cents)}</td><td>{listing.status}</td><td>
-            <form action="/api/admin/moderation" method="post"><input type="hidden" name="listingId" value={listing.id} /><input type="hidden" name="reason" value="Operator moderation" /><button name="action" value={listing.status === 'active' ? 'suspend' : 'reactivate'}>{listing.status === 'active' ? 'Suspend' : 'Reactivate'}</button><button name="action" value="block">Block</button></form>
+          {listings.results.map((listing) => <tr key={listing.id}><td><strong>{listing.title}</strong><small>{listing.normalized_key}</small><small><a href={listing.canonical_url} target="_blank" rel="noopener noreferrer">Open destination</a></small></td><td>{money(listing.total_cents)}</td><td>{listing.status}</td><td>
+            <form action="/api/admin/moderation" method="post"><input type="hidden" name="listingId" value={listing.id} /><input type="hidden" name="reason" value="Operator moderation" /><button name="action" value={listing.status === 'active' ? 'suspend' : 'reactivate'}>{listing.status === 'active' ? 'Remove' : 'Restore'}</button><button name="action" value="block">Block</button></form>
+            <details className="admin-edit"><summary>Edit public copy</summary><form action="/api/admin/moderation" method="post"><input type="hidden" name="listingId" value={listing.id} /><label>Title<input name="title" defaultValue={listing.title} maxLength={120} required /></label><label>Description<textarea name="description" defaultValue={listing.description} maxLength={280} rows={3} /></label><label className="admin-check"><input type="checkbox" name="removeLogo" /> Remove current logo</label><button name="action" value="edit">Save changes</button><small>Destination and payment history are immutable.</small></form></details>
           </td></tr>)}
         </tbody></table></div></article>
 

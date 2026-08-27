@@ -265,6 +265,15 @@ footer nav { display: flex; justify-content: flex-end; gap: 20px; }
 .admin-card td > small { color: var(--muted); margin-top: 3px; }
 .admin-card form { display: flex; gap: 5px; }
 .admin-card button { border: 1px solid var(--line); background: var(--surface-strong); border-radius: 6px; padding: 5px 7px; cursor: pointer; font-size: 8px; }
+.admin-edit { margin-top: 9px; min-width: 210px; }
+.admin-edit summary { color: var(--muted); cursor: pointer; font-size: 9px; }
+.admin-edit form { display: grid; gap: 8px; margin-top: 8px; }
+.admin-edit label { display: grid; gap: 4px; color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
+.admin-edit input:not([type="checkbox"]), .admin-edit textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-strong); color: var(--ink); padding: 7px; font: inherit; text-transform: none; letter-spacing: normal; }
+.admin-edit textarea { resize: vertical; }
+.admin-edit .admin-check { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: normal; }
+.admin-edit .admin-check input { accent-color: var(--accent); }
+.admin-edit form > small { color: var(--muted); font-size: 8px; line-height: 1.35; }
 .admin-identity form { margin: 0; }
 .admin-identity button { border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; text-decoration: underline; font: inherit; }
 .admin-login-card { max-width: 440px; }
