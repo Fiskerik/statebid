@@ -13,7 +13,7 @@ export default async function AdminLoginPage({ searchParams }: { searchParams: P
   const returnTo = query.returnTo?.startsWith('/') && !query.returnTo.startsWith('//') ? query.returnTo : '/admin';
   return <main className="success-shell"><Link className="wordmark" href="/"><span className="wordmark-icon"><span /></span><span>statebid</span><strong>.lol</strong></Link><section className="success-card admin-login-card">
     <span className="state-card-kicker">Operator only</span><h1>Sign in to operations.</h1>
-    {!configured ? <p>Set ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET in Vercel before using this route.</p> : <form action="/api/admin/login" method="post" className="admin-login-form">
+    {!configured ? <p>Admin authentication is not available in this deployment. Set a non-empty ADMIN_USERNAME, an ADMIN_PASSWORD of at least 12 characters, and an ADMIN_SESSION_SECRET of at least 32 characters in Vercel Production, then redeploy.</p> : <form action="/api/admin/login" method="post" className="admin-login-form">
       <input type="hidden" name="returnTo" value={returnTo} />
       <label>Username<input name="username" autoComplete="username" required /></label>
       <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
